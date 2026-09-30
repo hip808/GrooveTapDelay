@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
+#include "StompLookAndFeel.h"
 
 class GrooveTapDelayAudioProcessorEditor : public juce::AudioProcessorEditor,
                                             private juce::Timer
@@ -15,7 +16,19 @@ public:
     void resized() override;
 
 private:
+    StompLookAndFeel stompLook;
     GrooveTapDelayAudioProcessor& proc;
+    juce::Image panelTexture;
+    juce::Label tempoReadout;
+    juce::TooltipWindow tooltips { this, 600 };
+    juce::TextButton selectFoot { "1  SELECT BAND" };
+    juce::Slider assignKnob;
+    juce::Label assignLabel;
+    juce::ComboBox assignTarget;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> assignAttachment;
+    void bindAssign();
+    std::array<std::unique_ptr<juce::TextButton>, kNumBands> bandPowerButtons;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>, kNumBands> bandPowerAttachments;
 
     // --- Patch / preset bar ---
     juce::TextButton prevPatchButton { "<" }, nextPatchButton { ">" }, browsePatchButton { "Browse" }, savePatchButton { "Save" };
@@ -41,7 +54,7 @@ private:
     juce::Label waveLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> waveAttachment;
 
-    juce::ToggleButton bypassButton { "Bypass" };
+    juce::TextButton bypassButton { "BYPASS" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
 
     // --- EFFECT BAND select strip (top left, mirrors the hardware's 1-8 row) ---
@@ -51,10 +64,10 @@ private:
 
     // --- Band title / on-off / tap tempo ---
     juce::Label bandTitleLabel;
-    juce::ToggleButton bandEnabledButton { "On" };
+    juce::TextButton bandEnabledButton { "2  BAND ON/OFF" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bandEnabledAttachment;
     juce::TextButton tapTempoButton { "TAP TEMPO" };
-    juce::int64 lastTapTimeMs = 0;
+    double lastTapTimeMs = 0;
 
     // --- Top knob row (hardware: TAP / SPEED / DEPTH / PAN / LEVEL) ---
     juce::Slider tapKnob, speedKnob, depthKnob, panKnob, levelKnob;
@@ -79,7 +92,6 @@ private:
     void selectBand (int bandIndex);
     void timerCallback() override;
 
-    int globalClusterDividerX = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GrooveTapDelayAudioProcessorEditor)
 };

@@ -33,6 +33,7 @@ float GrooveTapDelayAudioProcessor::computeLfoValue (double phase, int waveIndex
         case LfoWave::SineTriangle: return 0.5f * (sineWave (phase) + triangleWave (phase));
         case LfoWave::SineSawUp:    return 0.5f * (sineWave (phase) + sawUpWave (phase));
         case LfoWave::SineSawDown:  return 0.5f * (sineWave (phase) + sawDownWave (phase));
+        case LfoWave::Count: return 0.0f;
         default: return 0.0f;
     }
 }
@@ -117,6 +118,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout GrooveTapDelayAudioProcessor
         return v < 0 ? ("L" + juce::String (juce::roundToInt (-v * 10))) : ("R" + juce::String (juce::roundToInt (v * 10)));
     };
 
+    auto parsePan = [] (const juce::String& text)
+    {
+        auto value = text.trim().toUpperCase();
+        if (value == "C") return 0.0f;
+        if (value.startsWithChar ('L')) return -value.substring (1).getFloatValue() / 10.0f;
+        if (value.startsWithChar ('R')) return value.substring (1).getFloatValue() / 10.0f;
+        return value.getFloatValue() / 10.0f;
+    };
     for (int b = 0; b < kNumBands; ++b)
     {
         bool defaultOn = (b == 0);
@@ -133,37 +142,39 @@ juce::AudioProcessorValueTreeState::ParameterLayout GrooveTapDelayAudioProcessor
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             bandParamId (b, "feedback"), "Band " + juce::String (b + 1) + " Feedback",
             juce::NormalisableRange<float> (0.0f, 0.95f), 0.30f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10)));
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10).withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue() / 10.0f; })));
 
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             bandParamId (b, "lowcut"), "Band " + juce::String (b + 1) + " Low Cut",
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzOffText0to1LowCut)));
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzOffText0to1LowCut).withValueFromStringFunction ([] (const juce::String& text)
+            { return text.trim().equalsIgnoreCase ("OFF") ? 0.0f : juce::jlimit (0.02f, 1.0f, (text.getFloatValue() - 20.0f) / 980.0f); })));
 
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             bandParamId (b, "highcut"), "Band " + juce::String (b + 1) + " High Cut",
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzOffText0to1HighCut)));
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzOffText0to1HighCut).withValueFromStringFunction ([] (const juce::String& text)
+            { return text.trim().equalsIgnoreCase ("OFF") ? 0.0f : juce::jlimit (0.02f, 1.0f, (20000.0f - text.getFloatValue()) / 19000.0f); })));
 
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             bandParamId (b, "pan"), "Band " + juce::String (b + 1) + " Pan",
             juce::NormalisableRange<float> (-1.0f, 1.0f), (b % 2 == 0) ? -0.4f : 0.4f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (panText)));
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (panText).withValueFromStringFunction (parsePan)));
 
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             bandParamId (b, "level"), "Band " + juce::String (b + 1) + " Level",
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.7f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10)));
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10).withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue() / 10.0f; })));
 
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             bandParamId (b, "lfospeed"), "Band " + juce::String (b + 1) + " LFO Speed",
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.2f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10)));
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10).withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue() / 10.0f; })));
 
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             bandParamId (b, "lfodepth"), "Band " + juce::String (b + 1) + " LFO Depth",
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10)));
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10).withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue() / 10.0f; })));
 
         params.push_back (std::make_unique<juce::AudioParameterChoice> (
             bandParamId (b, "lfowave"), "Band " + juce::String (b + 1) + " Wave", waveChoices, 0));
@@ -175,14 +186,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout GrooveTapDelayAudioProcessor
             bandParamId (b, "syncpct"), "Band " + juce::String (b + 1) + " Sync %",
             juce::NormalisableRange<float> (0.05f, 2.0f), 1.0f,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction (
-                [](float v, int) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; })));
+                [](float v, int) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; }).withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue() / 100.0f; })));
     }
 
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("topology", "Topology", topologyChoices, 0));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         "effectLevel", "Effect Level", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10)));
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10).withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue() / 10.0f; })));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         "output", "Output", juce::NormalisableRange<float> (-24.0f, 12.0f), 0.0f,
@@ -191,11 +202,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout GrooveTapDelayAudioProcessor
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         "directLevel", "Direct Level", juce::NormalisableRange<float> (0.0f, 1.0f), 0.7f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10)));
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (pct10).withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue() / 10.0f; })));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         "directPan", "Direct Pan", juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (panText)));
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (panText).withValueFromStringFunction (parsePan)));
 
     params.push_back (std::make_unique<juce::AudioParameterBool> ("bypass", "Bypass", false));
 
@@ -209,7 +220,31 @@ void GrooveTapDelayAudioProcessor::prepareToPlay (double sr, int)
         band.prepare (sr);
 }
 
+double GrooveTapDelayAudioProcessor::getTailLengthSeconds() const
+{
+    // Conservative -100 dB estimate. Clock-synced bands can reach the full delay
+    // range; serial stages accumulate their individual decay times.
+    double tail = 0;
+    const bool series = topologyParam->load() > 0.5f;
+    for (const auto& p : bandParams)
+    {
+        if (p.enabled->load() < 0.5f) continue;
+        const auto delay = p.clockSync->load() > 0.5f ? kMaxBandTimeMs
+            : juce::jlimit (0.0f, kMaxBandTimeMs, p.timeMs->load() * p.syncPercent->load());
+        const auto feedback = (double) p.feedback->load();
+        const auto repeats = feedback > 0.001 ? std::ceil (std::log (1.0e-5) / std::log (feedback)) : 0.0;
+        const auto bandTail = ((double) delay + 15.0) * 0.001 * (1.0 + repeats);
+        tail = series ? tail + bandTail : juce::jmax (tail, bandTail);
+    }
+    return tail;
+}
+
 void GrooveTapDelayAudioProcessor::releaseResources() {}
+
+void GrooveTapDelayAudioProcessor::reset()
+{
+    for (auto& band : bands) band.reset();
+}
 
 bool GrooveTapDelayAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
@@ -241,7 +276,7 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         if (auto pos = playHead->getPosition())
             if (auto bpm = pos->getBpm())
                 hostBpm = *bpm;
-    hostBpm = juce::jmax (hostBpm, 20.0);
+    hostBpm = std::isfinite (hostBpm) ? juce::jmax (hostBpm, 20.0) : 120.0;
     float outGain = juce::Decibels::decibelsToGain (outputParam->load());
     float directLevel = directLevelParam->load();
     float directPan = directPanParam->load();
@@ -249,7 +284,7 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float directPanR = std::sqrt (0.5f * (1.0f + directPan));
 
     auto* inL = buffer.getReadPointer (0);
-    auto* inR = buffer.getNumChannels() > 1 ? buffer.getReadPointer (1) : buffer.getReadPointer (0);
+    auto* inR = getTotalNumInputChannels() > 1 ? buffer.getReadPointer (1) : buffer.getReadPointer (0);
     auto* outL = buffer.getWritePointer (0);
     auto* outR = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : buffer.getWritePointer (0);
 
@@ -267,16 +302,54 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         float lowCutHz = lowCutNorm < 0.02f ? 20.0f : juce::jmap (lowCutNorm, 0.0f, 1.0f, 20.0f, 1000.0f);
         float highCutHz = highCutNorm < 0.02f ? 20000.0f : juce::jmap (highCutNorm, 0.0f, 1.0f, 20000.0f, 1000.0f);
 
-        auto lc = juce::dsp::IIR::Coefficients<float>::makeHighPass (currentSampleRate, lowCutHz);
-        auto hc = juce::dsp::IIR::Coefficients<float>::makeLowPass (currentSampleRate, highCutHz);
-
-        band.loopLowCutL.coefficients = lc;
-        band.loopLowCutR.coefficients = lc;
-        band.loopHighCutL.coefficients = hc;
-        band.loopHighCutR.coefficients = hc;
+        // Fixed-size arrays and preallocated coefficient objects avoid heap work here.
+        if (! juce::exactlyEqual (lowCutNorm, band.lastLowCut))
+        {
+            const auto lc = juce::dsp::IIR::ArrayCoefficients<float>::makeHighPass (currentSampleRate, juce::jmin (lowCutHz, (float) currentSampleRate * 0.45f));
+            *band.loopLowCutL.coefficients = lc;
+            *band.loopLowCutR.coefficients = lc;
+            if (lowCutNorm < 0.02f) { band.loopLowCutL.reset(); band.loopLowCutR.reset(); }
+            band.lastLowCut = lowCutNorm;
+        }
+        if (! juce::exactlyEqual (highCutNorm, band.lastHighCut))
+        {
+            const auto hc = juce::dsp::IIR::ArrayCoefficients<float>::makeLowPass (currentSampleRate, juce::jmin (highCutHz, (float) currentSampleRate * 0.45f));
+            *band.loopHighCutL.coefficients = hc;
+            *band.loopHighCutR.coefficients = hc;
+            if (highCutNorm < 0.02f) { band.loopHighCutL.reset(); band.loopHighCutR.reset(); }
+            band.lastHighCut = highCutNorm;
+        }
     }
 
     constexpr float kMaxModMs = 15.0f;
+    struct BlockBand
+    {
+        bool enabled;
+        double phaseIncrement;
+        int wave;
+        float modulationMs, baseTimeMs, feedback, gainL, gainR;
+    };
+    std::array<BlockBand, kNumBands> settings;
+    bool anyEnabled = false;
+    for (int b = 0; b < kNumBands; ++b)
+    {
+        const auto& p = bandParams[(size_t) b];
+        auto& s = settings[(size_t) b];
+        s.enabled = p.enabled->load() > 0.5f;
+        anyEnabled = anyEnabled || s.enabled;
+        s.phaseIncrement = 0.02 * std::pow (400.0, (double) p.lfoSpeed->load()) / currentSampleRate;
+        s.wave = juce::jlimit (0, (int) LfoWave::Count - 1, (int) std::round (p.lfoWave->load()));
+        const auto depth = p.lfoDepth->load();
+        s.modulationMs = depth * depth * kMaxModMs;
+        const int clock = juce::jlimit (0, clockChoices.size() - 1, (int) std::round (p.clockSync->load()));
+        const auto time = clock == 0 ? p.timeMs->load() : (float) (60000.0 / hostBpm * clockBeatLengths[clock]);
+        s.baseTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs, time * p.syncPercent->load());
+        s.feedback = p.feedback->load();
+        const auto pan = p.pan->load(), level = p.level->load();
+        s.gainL = level * std::sqrt (0.5f * (1.0f - pan));
+        s.gainR = level * std::sqrt (0.5f * (1.0f + pan));
+    }
+    const float effectLevel = effectLevelParam->load();
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -291,77 +364,52 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
         for (int b = 0; b < kNumBands; ++b)
         {
-            auto& bp = bandParams[(size_t) b];
+            const auto& s = settings[(size_t) b];
             auto& band = bands[(size_t) b];
 
-            bool enabled = bp.enabled->load() > 0.5f;
+            bool enabled = s.enabled;
 
             float bandInL = isSeries ? stageL : dryL;
             float bandInR = isSeries ? stageR : dryR;
 
-            if (! enabled)
-            {
-                if (isSeries) { /* pass through unchanged */ }
-                continue;
-            }
+            // Muted bands still advance and decay; re-enabling must not replay frozen audio.
+            if (! enabled) bandInL = bandInR = 0.0f;
 
-            // Advance this band's own LFO. Both Speed and Depth are 0-10
-            // knobs on the hardware; a musically-sane rate/depth range spans
-            // more than one octave, so - like almost every analog modulation
-            // rate/depth control - the knob position is curved (exponential
-            // for rate, power-law for depth) rather than mapped linearly.
-            // A raw value of "3.5" should feel like a gentle chorus, not
-            // a third of the way to a fast vibrato.
-            float speedNorm = bp.lfoSpeed->load();
-            float speedHz = 0.02f * std::pow (400.0f, speedNorm); // 0.02 Hz .. 8 Hz, exponential
-            band.lfoPhase += speedHz / currentSampleRate;
+            // The speed/depth curves remain approximations, not measured Yamaha curves.
+            band.lfoPhase += s.phaseIncrement;
             if (band.lfoPhase >= 1.0) band.lfoPhase -= 1.0;
-
-            int waveIdx = juce::jlimit (0, (int) LfoWave::Count - 1, (int) std::round (bp.lfoWave->load()));
-            float lfoVal = computeLfoValue (band.lfoPhase, waveIdx);
-
-            float depthNorm = bp.lfoDepth->load();
-            float depthCurved = depthNorm * depthNorm; // power-law taper: gentle at low settings
-            float modMs = lfoVal * depthCurved * kMaxModMs;
-
-            int clockIdx = juce::jlimit (0, clockChoices.size() - 1, (int) std::round (bp.clockSync->load()));
-            float syncPct = bp.syncPercent->load();
-            float baseTimeMs;
-            if (clockIdx == 0)
-            {
-                // Matches the hardware's real TAP control: "the timing at
-                // which the delayed sound is taken from the delay loop,
-                // expressed as a percentage of the delay time setting."
-                baseTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs, bp.timeMs->load() * syncPct);
-            }
-            else
-            {
-                double beats = clockBeatLengths[clockIdx];
-                double syncedMs = (60000.0 / hostBpm) * beats * (double) syncPct;
-                baseTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs, (float) syncedMs);
-            }
-            float totalTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs + kMaxModMs, baseTimeMs + modMs);
-            float delaySamples = (float) (totalTimeMs / 1000.0 * currentSampleRate);
+            const float modMs = computeLfoValue (band.lfoPhase, s.wave) * s.modulationMs;
+            const float totalTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs + kMaxModMs, s.baseTimeMs + modMs);
+            // A causal feedback line needs at least one sample. Reading the current
+            // write cell at zero delay instead returns an entire old buffer cycle.
+            float delaySamples = juce::jmax (1.0f, (float) (totalTimeMs / 1000.0 * currentSampleRate));
 
             float readPosF = (float) band.writePos - delaySamples;
             float readL = readInterpolated (band.bufL, band.bufLen, readPosF);
             float readR = readInterpolated (band.bufR, band.bufLen, readPosF);
 
-            float feedback = bp.feedback->load();
-            float fbL = band.loopHighCutL.processSample (band.loopLowCutL.processSample (readL)) * feedback;
-            float fbR = band.loopHighCutR.processSample (band.loopLowCutR.processSample (readR)) * feedback;
+            float feedback = s.feedback;
+            float fbL = readL, fbR = readR;
+            if (band.lastLowCut >= 0.02f)
+            {
+                fbL = band.loopLowCutL.processSample (fbL);
+                fbR = band.loopLowCutR.processSample (fbR);
+            }
+            if (band.lastHighCut >= 0.02f)
+            {
+                fbL = band.loopHighCutL.processSample (fbL);
+                fbR = band.loopHighCutR.processSample (fbR);
+            }
+            fbL *= feedback; fbR *= feedback;
 
             band.bufL[(size_t) band.writePos] = bandInL + fbL;
             band.bufR[(size_t) band.writePos] = bandInR + fbR;
             band.writePos = (band.writePos + 1) % band.bufLen;
 
-            float pan = bp.pan->load();
-            float level = bp.level->load();
-            float panL = std::sqrt (0.5f * (1.0f - pan));
-            float panR = std::sqrt (0.5f * (1.0f + pan));
+            float bandOutL = readL * s.gainL;
+            float bandOutR = readR * s.gainR;
 
-            float bandOutL = readL * level * panL;
-            float bandOutR = readR * level * panR;
+            if (! enabled) continue;
 
             if (isSeries)
             {
@@ -375,9 +423,8 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             }
         }
 
-        float effectLevel = effectLevelParam->load();
-        float wetL = (isSeries ? stageL : wetSumL) * effectLevel;
-        float wetR = (isSeries ? stageR : wetSumR) * effectLevel;
+        float wetL = (isSeries ? (anyEnabled ? stageL : 0.0f) : wetSumL) * effectLevel;
+        float wetR = (isSeries ? (anyEnabled ? stageR : 0.0f) : wetSumR) * effectLevel;
 
         float finalL = (dryL * directPanL * directLevel + wetL) * outGain;
         float finalR = (dryR * directPanR * directLevel + wetR) * outGain;
@@ -440,12 +487,14 @@ void GrooveTapDelayAudioProcessor::applyFactoryPreset (const FactoryPreset& pres
 
 juce::String GrooveTapDelayAudioProcessor::getPatchName (int index) const
 {
+    const juce::ScopedLock lock (patchLock);
     if (index < 0 || index >= kTotalPatches) return {};
     return patchNames[index];
 }
 
 void GrooveTapDelayAudioProcessor::loadPatch (int index)
 {
+    const juce::ScopedLock lock (patchLock);
     index = juce::jlimit (0, kTotalPatches - 1, index);
     currentPatchIndex = index;
 
@@ -476,6 +525,7 @@ void GrooveTapDelayAudioProcessor::loadPatch (int index)
 
 void GrooveTapDelayAudioProcessor::savePatch (int index, const juce::String& newName)
 {
+    const juce::ScopedLock lock (patchLock);
     if (! isPatchEditable (index)) return; // Factory bank is read-only
     index = juce::jlimit (0, kTotalPatches - 1, index);
     patchXmlStore.set (index, apvts.copyState().createXml()->toString());
@@ -484,14 +534,16 @@ void GrooveTapDelayAudioProcessor::savePatch (int index, const juce::String& new
 
 void GrooveTapDelayAudioProcessor::renamePatch (int index, const juce::String& newName)
 {
+    const juce::ScopedLock lock (patchLock);
     if (! isPatchEditable (index) || newName.isEmpty()) return;
     patchNames.set (juce::jlimit (0, kTotalPatches - 1, index), newName);
 }
 
 void GrooveTapDelayAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    const juce::ScopedLock lock (patchLock);
     juce::XmlElement root ("GrooveTapState");
-    root.setAttribute ("currentPatch", currentPatchIndex);
+    root.setAttribute ("currentPatch", currentPatchIndex.load());
 
     if (auto paramsXml = apvts.copyState().createXml())
         root.addChildElement (paramsXml.release());
@@ -499,7 +551,10 @@ void GrooveTapDelayAudioProcessor::getStateInformation (juce::MemoryBlock& destD
     auto* bank = new juce::XmlElement ("PatchBank");
     for (int i = kNumFactorySlots; i < kTotalPatches; ++i)
     {
-        bool nameChanged = patchNames[i] != getPatchName (i);
+        juce::String initialName = i < kNumFactorySlots + kNumUserSlots
+            ? juce::String (factoryPresets[(size_t) (i - kNumFactorySlots)].name)
+            : "Init " + juce::String (i - (kNumFactorySlots + kNumUserSlots) + 1);
+        bool nameChanged = patchNames[i] != initialName;
         bool hasSavedState = patchXmlStore[i].isNotEmpty();
         if (! nameChanged && ! hasSavedState) continue;
 
@@ -518,12 +573,21 @@ void GrooveTapDelayAudioProcessor::getStateInformation (juce::MemoryBlock& destD
 
 void GrooveTapDelayAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    const juce::ScopedLock lock (patchLock);
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
     if (xml == nullptr) return;
 
     if (xml->hasTagName ("GrooveTapState"))
     {
-        currentPatchIndex = xml->getIntAttribute ("currentPatch", 0);
+        currentPatchIndex = juce::jlimit (0, kTotalPatches - 1, xml->getIntAttribute ("currentPatch", 0));
+        // A new session state replaces the bank, including previously unsaved slots.
+        for (int i = kNumFactorySlots; i < kTotalPatches; ++i)
+        {
+            patchXmlStore.set (i, {});
+            patchNames.set (i, i < kNumFactorySlots + kNumUserSlots
+                ? juce::String (factoryPresets[(size_t) (i - kNumFactorySlots)].name)
+                : "Init " + juce::String (i - (kNumFactorySlots + kNumUserSlots) + 1));
+        }
 
         if (auto* paramsXml = xml->getChildByName (apvts.state.getType()))
             apvts.replaceState (juce::ValueTree::fromXml (*paramsXml));
@@ -533,9 +597,9 @@ void GrooveTapDelayAudioProcessor::setStateInformation (const void* data, int si
             for (auto* slot : bank->getChildIterator())
             {
                 int idx = slot->getIntAttribute ("index", -1);
-                if (idx < 0 || idx >= kTotalPatches) continue;
+                if (! isPatchEditable (idx)) continue;
                 patchNames.set (idx, slot->getStringAttribute ("name"));
-                if (auto* inner = slot->getFirstChildElement())
+                if (auto* inner = slot->getChildByName (apvts.state.getType()))
                     patchXmlStore.set (idx, inner->toString());
             }
         }
