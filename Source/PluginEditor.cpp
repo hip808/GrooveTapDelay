@@ -434,9 +434,12 @@ void GrooveTapDelayAudioProcessorEditor::resized()
     knob (timeKnob, 0, 350); knob (lowCutKnob, 1, 350); knob (highCutKnob, 2, 350);
     knob (feedbackKnob, 3, 350); knob (directPanKnob, 4, 350); knob (directLevelKnob, 5, 350);
     place (outputKnob, 1053, 319, 99, 116);
-    place (assignKnob, 114, 316, 125, 128);
+    outputKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false,
+                                juce::roundToInt (90*scale), juce::roundToInt (23*scale));
+    place (assignKnob, 114, 304, 125, 128);
     assignKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    place (assignTarget, 128, 445, 96, 23);
+    // Match the value typography and control height used by EDIT SETTINGS.
+    place (assignTarget, 123, 437, 106, 35);
     for (auto* l : { &tapLabel, &speedLabel, &depthLabel, &panLabel, &levelLabel, &effectLevelLabel,
                      &timeLabel, &lowCutLabel, &highCutLabel, &feedbackLabel, &directPanLabel,
                      &directLevelLabel, &outputLabel, &assignLabel, &groupLabel, &syncLabel, &waveLabel })
