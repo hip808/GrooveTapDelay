@@ -1,18 +1,12 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "BinaryData.h"
 
 GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTapDelayAudioProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
 {
     setLookAndFeel (&stompLook);
-    panelTexture = juce::Image (juce::Image::RGB, 1200, 800, false);
-    juce::Random grain (808);
-    for (int y = 0; y < 800; ++y)
-        for (int x = 0; x < 1200; ++x)
-        {
-            auto v = grain.nextInt (17) - 8;
-            panelTexture.setPixelAt (x, y, juce::Colour::fromRGB ((juce::uint8) (18 + v), (juce::uint8) (92 + v), (juce::uint8) (96 + v)));
-        }
+    panelTexture = juce::ImageCache::getFromMemory (BinaryData::faceplate_png, BinaryData::faceplate_pngSize);
     for (auto* foot : { &selectFoot, &bandEnabledButton, &tapTempoButton, &bypassButton })
         foot->getProperties().set ("foot", true);
     bypassButton.setClickingTogglesState (true);
@@ -205,6 +199,9 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
     outputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         proc.apvts, "output", outputKnob);
 
+    patchNumberLabel.getProperties().set ("lcd", true);
+    patchNameLabel.getProperties().set ("lcd", true);
+    tempoReadout.getProperties().set ("lcd", true);
     selectBand (0);
     refreshPatchDisplay();
     startTimerHz (8);
@@ -220,7 +217,8 @@ GrooveTapDelayAudioProcessorEditor::~GrooveTapDelayAudioProcessorEditor() { stop
 void GrooveTapDelayAudioProcessorEditor::setupKnob (juce::Slider& s, juce::Label& l, const juce::String& text)
 {
     s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 64, 16);
+    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 84, 22);
+    s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     addAndMakeVisible (s);
     l.setText (text.toUpperCase(), juce::dontSendNotification);
     l.setFont (juce::FontOptions (12.0f));
@@ -365,76 +363,84 @@ void GrooveTapDelayAudioProcessorEditor::timerCallback()
 void GrooveTapDelayAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.addTransform (juce::AffineTransform::scale ((float) getWidth() / 1200.0f, (float) getHeight() / 800.0f));
-    g.fillAll (juce::Colour (0xff141a1a));
-    g.drawImageAt (panelTexture, 0, 0);
-    g.setGradientFill ({juce::Colours::white.withAlpha (0.08f), 0, 0, juce::Colours::black.withAlpha (0.22f), 0, 800, false});
-    g.fillAll();
-    g.setColour (juce::Colour (0xff121c1c));
-    g.drawRoundedRectangle (5, 5, 1190, 790, 15, 12);
-    g.setColour (stompLook.cream.withAlpha (0.4f));
-    g.drawRoundedRectangle (14, 14, 1172, 772, 10, 1);
-    g.setColour (juce::Colour (0xff101717)); g.fillRect (8, 487, 1184, 22);
-    g.setColour (juce::Colour (0xff72918c)); g.drawHorizontalLine (490, 14, 1186);
-    g.setColour (juce::Colours::black.withAlpha (0.7f)); g.fillRoundedRectangle (42, 94, 282, 68, 6);
-    g.setColour (stompLook.cream.withAlpha (0.4f)); g.drawRoundedRectangle (42, 94, 282, 68, 6, 2);
-    g.setColour (stompLook.cream);
-    g.setFont (juce::FontOptions ("Arial", 44.0f, juce::Font::bold | juce::Font::italic));
-    g.drawText ("MOKU AI", 45, 30, 285, 58, juce::Justification::centredLeft);
-    g.setFont (juce::FontOptions ("Arial", 46.0f, juce::Font::bold | juce::Font::italic));
-    g.drawText ("MOKU AI UD Stomp", 45, 525, 830, 60, juce::Justification::centredLeft);
-    g.setFont (juce::FontOptions (14, juce::Font::bold));
-    g.drawText ("8-BAND MODULATION DELAY", 48, 585, 500, 24, juce::Justification::centredLeft);
-    g.setFont (juce::FontOptions (11, juce::Font::bold));
-    g.drawText ("SELECT", 336, 89, 56, 30, juce::Justification::centredRight);
-    g.drawText ("ON/OFF", 336, 133, 56, 30, juce::Justification::centredRight);
-    g.setColour (stompLook.cream.withAlpha (0.4f)); g.drawVerticalLine (1048, 205, 464);
-    for (auto pt : {juce::Point<float> (24, 26), {1176, 26}, {24, 466}, {1176, 466}, {24, 528}, {1176, 528}, {24, 775}, {1176, 775}})
+    g.drawImage (panelTexture, juce::Rectangle<float> (0, 0, 1200, 800));
+    auto screen = [&g] (float x, float y, float w, float h)
     {
-        g.setColour (juce::Colour (0xff0a1414)); g.fillEllipse (pt.x - 7, pt.y - 7, 14, 14);
-        g.setColour (juce::Colour (0xff82948d)); g.drawEllipse (pt.x - 7, pt.y - 7, 14, 14, 1);
-        g.drawLine (pt.x - 3, pt.y - 3, pt.x + 3, pt.y + 3, 1.5f);
-    }
+        g.setColour (juce::Colour (0xff030505)); g.fillRoundedRectangle (x, y, w, h, 5);
+        g.setColour (juce::Colour (0xff62706a)); g.drawRoundedRectangle (x, y, w, h, 5, 1);
+        g.setColour (juce::Colours::black); g.fillRoundedRectangle (x+6, y+6, w-12, h-12, 3);
+    };
+    screen (55, 90, 251, 80);
+    screen (779, 636, 108, 38);
+    g.setColour (stompLook.cream);
+    g.setFont (StompLookAndFeel::panelFont (15));
+    g.drawText ("SELECT", 329, 94, 57, 25, juce::Justification::centredLeft);
+    g.drawText ("ON/OFF", 329, 132, 57, 25, juce::Justification::centredLeft);
+    g.drawVerticalLine (1038, 182, 454);
+    g.drawRoundedRectangle (836, 56, 303, 81, 3, 1);
+    g.drawLine (374, 51, 534, 51); g.drawLine (658, 51, 804, 51);
+    g.drawLine (374, 51, 374, 78); g.drawLine (804, 51, 804, 78);
 }
 
 void GrooveTapDelayAudioProcessorEditor::resized()
 {
+    const float scale = (float) getWidth() / 1200.0f;
     auto place = [this] (juce::Component& c, int x, int y, int w, int h)
     {
         c.setBounds (juce::roundToInt (x * getWidth() / 1200.0), juce::roundToInt (y * getHeight() / 800.0),
                      juce::roundToInt (w * getWidth() / 1200.0), juce::roundToInt (h * getHeight() / 800.0));
     };
-    place (patchNumberLabel, 50, 110, 54, 38);
-    place (patchNameLabel, 106, 110, 210, 38);
+    place (patchNumberLabel, 76, 110, 65, 40);
+    place (patchNameLabel, 146, 110, 151, 40);
     patchNumberLabel.setColour (juce::Label::textColourId, stompLook.amber);
-    patchNumberLabel.setFont (juce::FontOptions (21));
-    patchNameLabel.setFont (juce::FontOptions (18, juce::Font::bold));
-    place (prevPatchButton, 42, 179, 61, 29); prevPatchButton.setButtonText ("PREV");
-    place (nextPatchButton, 111, 179, 61, 29); nextPatchButton.setButtonText ("NEXT");
-    place (browsePatchButton, 180, 179, 73, 29);
-    place (savePatchButton, 261, 179, 63, 29);
-    place (effectBandHeading, 398, 40, 390, 25);
+    patchNumberLabel.setFont (juce::FontOptions ("Menlo", 32*scale, juce::Font::plain));
+    patchNameLabel.setFont (juce::FontOptions ("Menlo", 29*scale, juce::Font::plain));
+    place (prevPatchButton, 62, 182, 45, 57); prevPatchButton.setButtonText ("PREV");
+    place (nextPatchButton, 127, 182, 45, 57); nextPatchButton.setButtonText ("NEXT");
+    place (browsePatchButton, 188, 182, 49, 57); browsePatchButton.setButtonText ("BROWSE");
+    place (savePatchButton, 254, 182, 45, 57); savePatchButton.setButtonText ("SAVE");
+    for (auto* b : { &prevPatchButton, &nextPatchButton, &browsePatchButton, &savePatchButton })
+        b->getProperties().set ("smallSwitch", true);
+    place (effectBandHeading, 538, 38, 125, 27);
+    effectBandHeading.setFont (StompLookAndFeel::panelFont (20*scale));
     for (int b = 0; b < kNumBands; ++b)
     {
-        place (*bandButtons[(size_t) b], 396 + b * 47, 74, 40, 46);
-        place (*bandPowerButtons[(size_t) b], 396 + b * 47, 130, 40, 34);
+        place (*bandButtons[(size_t) b], 388 + b * 53, 68, 39, 55);
+        place (*bandPowerButtons[(size_t) b], 388 + b * 53, 127, 39, 39);
     }
-    place (editFunctionHeading, 808, 40, 350, 25);
-    place (groupBox, 808, 105, 107, 34);
-    place (syncBox, 925, 105, 107, 34);
-    place (waveBox, 1042, 105, 118, 34);
-    place (bandTitleLabel, 399, 171, 300, 23);
-    bandTitleLabel.setFont (juce::FontOptions (11));
-    auto knob = [&place] (juce::Slider& s, int col, int y) { place (s, 352 + col * 115, y, 105, 112); };
-    knob (tapKnob, 0, 223); knob (speedKnob, 1, 223); knob (depthKnob, 2, 223);
-    knob (panKnob, 3, 223); knob (levelKnob, 4, 223); knob (effectLevelKnob, 5, 223);
-    knob (timeKnob, 0, 367); knob (lowCutKnob, 1, 367); knob (highCutKnob, 2, 367);
-    knob (feedbackKnob, 3, 367); knob (directPanKnob, 4, 367); knob (directLevelKnob, 5, 367);
-    place (outputKnob, 1060, 303, 106, 120);
-    place (assignKnob, 99, 284, 160, 153);
-    place (assignTarget, 99, 443, 160, 28);
-    place (selectFoot, 105, 634, 175, 129);
-    place (bandEnabledButton, 371, 634, 175, 129);
-    place (tapTempoButton, 637, 634, 175, 129);
-    place (tempoReadout, 796, 672, 87, 30);
-    place (bypassButton, 903, 634, 175, 129);
+    place (editFunctionHeading, 933, 44, 142, 24);
+    editFunctionHeading.setText ("EDIT SETTINGS", juce::dontSendNotification);
+    editFunctionHeading.setFont (StompLookAndFeel::panelFont (18*scale));
+    place (groupBox, 850, 93, 99, 35);
+    place (syncBox, 965, 93, 72, 35);
+    place (waveBox, 1059, 93, 70, 35);
+    bandTitleLabel.setVisible (false);
+    auto knob = [&place, scale] (juce::Slider& s, int col, int y)
+    {
+        place (s, 338 + col * 117, y, 99, 105);
+        s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, juce::roundToInt (90*scale), juce::roundToInt (23*scale));
+    };
+    knob (tapKnob, 0, 204); knob (speedKnob, 1, 204); knob (depthKnob, 2, 204);
+    knob (panKnob, 3, 204); knob (levelKnob, 4, 204); knob (effectLevelKnob, 5, 204);
+    knob (timeKnob, 0, 350); knob (lowCutKnob, 1, 350); knob (highCutKnob, 2, 350);
+    knob (feedbackKnob, 3, 350); knob (directPanKnob, 4, 350); knob (directLevelKnob, 5, 350);
+    place (outputKnob, 1053, 319, 99, 116);
+    place (assignKnob, 114, 316, 125, 128);
+    assignKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    place (assignTarget, 128, 445, 96, 23);
+    for (auto* l : { &tapLabel, &speedLabel, &depthLabel, &panLabel, &levelLabel, &effectLevelLabel,
+                     &timeLabel, &lowCutLabel, &highCutLabel, &feedbackLabel, &directPanLabel,
+                     &directLevelLabel, &outputLabel, &assignLabel, &groupLabel, &syncLabel, &waveLabel })
+        l->setFont (StompLookAndFeel::panelFont (16*scale));
+    selectFoot.setButtonText ("SELECT BAND"); bandEnabledButton.setButtonText ("BAND ON/OFF");
+    selectFoot.getProperties().set ("number", "1");
+    bandEnabledButton.getProperties().set ("number", "2");
+    tapTempoButton.getProperties().set ("number", "3");
+    place (selectFoot, 99, 582, 155, 161);
+    place (bandEnabledButton, 384, 582, 155, 161);
+    place (tapTempoButton, 661, 582, 155, 161);
+    place (bypassButton, 943, 582, 155, 161);
+    place (tempoReadout, 783, 639, 100, 32);
+    tempoReadout.setFont (juce::FontOptions ("Menlo", 22*scale, juce::Font::plain));
+    tempoReadout.setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
 }

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(GrooveTapDelay VERSION 1.1.0)
+project(GrooveTapDelay VERSION 1.1.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,6 +24,8 @@ juce_add_plugin(GrooveTapDelay
     COPY_PLUGIN_AFTER_BUILD ${MOKU_COPY_PLUGIN}
     VST3_COPY_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
 
+juce_add_binary_data(StompAssets SOURCES Assets/faceplate.png Assets/controls.png)
+
 target_sources(GrooveTapDelay
     PRIVATE
         Source/PluginProcessor.cpp
@@ -38,6 +40,7 @@ target_compile_definitions(GrooveTapDelay
 
 target_link_libraries(GrooveTapDelay
     PRIVATE
+        StompAssets
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
@@ -49,7 +52,7 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(MokuTests)
     target_sources(MokuTests PRIVATE Tests/RegressionTests.cpp)
-    target_link_libraries(MokuTests PRIVATE GrooveTapDelay juce::juce_audio_utils juce::juce_dsp)
+    target_link_libraries(MokuTests PRIVATE GrooveTapDelay StompAssets juce::juce_audio_utils juce::juce_dsp)
     target_compile_definitions(MokuTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     add_test(NAME MokuRegression COMMAND MokuTests)
 endif()
