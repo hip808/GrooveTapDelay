@@ -2,7 +2,7 @@
 
 An eight-band modulation/delay VST3 for macOS, built with JUCE. Formerly GrooveTap Delay.
 
-The new editor follows the approved teal-metal stompbox design: separate band selection and ON/OFF rows, a preset display, an assignable control, two rows of parameter knobs, and four footswitch-style controls. Version 1.1.1 embeds a photorealistic worn-metal faceplate and control sprites matching the approved mockup. Values, knob pointers, LEDs, buttons and menus remain live and scale with the window. Audio processing and parameter IDs are unchanged from 1.1.0.
+The new editor follows the approved teal-metal stompbox design: separate band selection and ON/OFF rows, a preset display, an assignable control, two rows of parameter knobs, and four footswitch-style controls. Version 1.1.2 embeds a photorealistic worn-metal faceplate and control sprites matching the approved mockup. Values, knob pointers, LEDs, buttons and menus remain live and scale with the window. The editor can be reduced to 420 x 280 pixels (35% of its 1200 x 800 design size). Audio processing and parameter IDs are unchanged from 1.1.0.
 
 This is an independent approximation, not an exact Yamaha hardware emulation. Read the [hardware-fidelity assessment](docs/HARDWARE_FIDELITY.md) for confirmed components, current DSP differences and the measurement plan. The [code review](docs/CODE_REVIEW.md) records fixes and remaining work.
 

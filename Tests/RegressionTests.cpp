@@ -166,7 +166,7 @@ int main (int argc, char** argv)
                 check (png.writeImageToStream (editor->createComponentSnapshot (editor->getLocalBounds()), *stream), "Snapshot failed");
                 stream.reset();
                 // Exercise minimum-size layout and preserve a second review image.
-                editor->setSize (1000, 667);
+                editor->setSize (420, 280);
                 auto smallStream = file.getSiblingFile (file.getFileNameWithoutExtension() + "-small.png").createOutputStream();
                 check (smallStream != nullptr, "Cannot write minimum-size snapshot");
                 smallStream->setPosition (0); smallStream->truncate();

@@ -207,7 +207,10 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
     startTimerHz (8);
 
     setResizable (true, true);
-    setResizeLimits (1000, 667, 1800, 1200);
+    // Keep the full panel usable on smaller laptop screens.  The editor scales
+    // from its 1200 x 800 design coordinates, so 420 x 280 is 35% of the
+    // original dimensions while retaining the exact aspect ratio.
+    setResizeLimits (420, 280, 1800, 1200);
     getConstrainer()->setFixedAspectRatio (1.5);
     setSize (1200, 800);
 }
@@ -377,7 +380,13 @@ void GrooveTapDelayAudioProcessorEditor::paint (juce::Graphics& g)
     g.drawText ("SELECT", 329, 94, 57, 25, juce::Justification::centredLeft);
     g.drawText ("ON/OFF", 329, 132, 57, 25, juce::Justification::centredLeft);
     g.drawVerticalLine (1038, 182, 454);
-    g.drawRoundedRectangle (836, 56, 303, 81, 3, 1);
+    // Draw the settings frame with a deliberate gap behind its heading.
+    // A complete rounded rectangle used to strike through "EDIT SETTINGS".
+    g.drawLine (836, 56, 927, 56, 1);
+    g.drawLine (1080, 56, 1139, 56, 1);
+    g.drawLine (836, 56, 836, 137, 1);
+    g.drawLine (1139, 56, 1139, 137, 1);
+    g.drawLine (836, 137, 1139, 137, 1);
     g.drawLine (374, 51, 534, 51); g.drawLine (658, 51, 804, 51);
     g.drawLine (374, 51, 374, 78); g.drawLine (804, 51, 804, 78);
 }
