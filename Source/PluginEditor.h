@@ -103,6 +103,10 @@ private:
     void timerCallback() override;
 
     int globalClusterDividerX = 0;
+    int panelTopY = 0; // Y where the translucent knob-panel overlay starts,
+                       // computed directly in resized() from where the title
+                       // row actually ends - not a hand-summed magic number,
+                       // so it can never drift out of sync with the layout.
     GrooveTapLookAndFeel lookAndFeel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GrooveTapContentPanel)

@@ -397,13 +397,13 @@ void GrooveTapContentPanel::paint (juce::Graphics& g)
 
     g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     g.setColour (juce::Colour (0xffcfd8d4));
-    g.drawFittedText ("UD STOMP - 8-BAND MODULATION DELAY", header,
+    g.drawFittedText ("8TAP - 8-BAND MODULATION DELAY", header,
                        juce::Justification::centredRight, 1);
 
     // A light translucent panel over the knob-editing area for contrast,
     // letting the faceplate texture still show through.
     auto panel = getLocalBounds();
-    panel.removeFromTop (30 + 34 + 130 + 30); // header + patch bar + band/edit-function+on-off row + band-title row
+    panel.removeFromTop (panelTopY); // computed in resized(), see its declaration
     g.setColour (juce::Colours::black.withAlpha (0.18f));
     g.fillRoundedRectangle (panel.reduced (10, 4).toFloat(), 6.0f);
     g.setColour (juce::Colour (0xfff0e6c8).withAlpha (0.35f));
@@ -482,6 +482,7 @@ void GrooveTapContentPanel::resized()
     tapTempoButton.setBounds (titleRow.removeFromRight (100));
 
     area.removeFromTop (6);
+    panelTopY = area.getY(); // exactly where the translucent panel overlay should start
 
     // Reserve space so each knob's auto-positioned label (which sits directly
     // above the slider) never lands on top of the row above it.
