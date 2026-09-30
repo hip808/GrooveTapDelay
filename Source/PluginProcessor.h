@@ -73,11 +73,21 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "GrooveTap Delay"; }
-    bool acceptsMidi() const override { return false; }
+    const juce::String getName() const override { return "MOKU AI UD Stomp"; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 6.0; }
+
+    // Default MIDI note numbers mirroring the hardware's 4 footswitches:
+    // Select Band (cycle), Band On/Off (toggle the selected band), Tap
+    // Tempo, Bypass. Fixed for now - no MIDI-learn UI yet.
+    static constexpr int kMidiNoteSelectBand = 36;
+    static constexpr int kMidiNoteToggleOnOff = 37;
+    static constexpr int kMidiNoteTapTempo = 38;
+    static constexpr int kMidiNoteBypass = 39;
+
+    int getMidiSelectedBand() const { return midiSelectedBand.load(); }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -148,6 +158,11 @@ private:
     juce::StringArray patchXmlStore; // per-slot saved ValueTree XML; empty = not yet saved
     int currentPatchIndex = 0;
     juce::String defaultStateXml;
+
+    void handleMidiMessage (const juce::MidiMessage& m, int samplePositionInBlock);
+    std::atomic<int> midiSelectedBand { 0 };
+    juce::int64 totalSamplesProcessed = 0;
+    juce::int64 lastTapSampleTime = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GrooveTapDelayAudioProcessor)
 };

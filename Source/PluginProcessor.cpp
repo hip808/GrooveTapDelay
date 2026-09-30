@@ -229,9 +229,12 @@ static inline float readInterpolated (const std::vector<float>& buf, int bufLen,
     return buf[(size_t) i0] + frac * (buf[(size_t) i1] - buf[(size_t) i0]);
 }
 
-void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    for (const auto metadata : midiMessages)
+        handleMidiMessage (metadata.getMessage(), metadata.samplePosition);
 
     bool isBypassed = bypassParam->load() > 0.5f;
     bool isSeries = (int) std::round (topologyParam->load()) == 1;
@@ -384,6 +387,54 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
         outL[n] = isBypassed ? dryL : finalL;
         outR[n] = isBypassed ? dryR : finalR;
+    }
+
+    totalSamplesProcessed += numSamples;
+}
+
+void GrooveTapDelayAudioProcessor::handleMidiMessage (const juce::MidiMessage& m, int samplePositionInBlock)
+{
+    if (! m.isNoteOn()) return;
+
+    int note = m.getNoteNumber();
+
+    if (note == kMidiNoteSelectBand)
+    {
+        midiSelectedBand.store ((midiSelectedBand.load() + 1) % kNumBands);
+    }
+    else if (note == kMidiNoteToggleOnOff)
+    {
+        int b = midiSelectedBand.load();
+        auto id = bandParamId (b, "enabled");
+        if (auto* p = apvts.getParameter (id))
+            p->setValueNotifyingHost (p->getValue() > 0.5f ? 0.0f : 1.0f);
+    }
+    else if (note == kMidiNoteTapTempo)
+    {
+        // Sample-accurate interval measurement (avoids a wall-clock call on
+        // the audio thread) - mirrors the UI's own double-tap tap-tempo.
+        juce::int64 tapSampleTime = totalSamplesProcessed + samplePositionInBlock;
+        if (lastTapSampleTime >= 0)
+        {
+            juce::int64 intervalSamples = tapSampleTime - lastTapSampleTime;
+            double intervalMs = 1000.0 * (double) intervalSamples / currentSampleRate;
+            if (intervalMs > 50.0 && intervalMs < 3000.0)
+            {
+                int b = midiSelectedBand.load();
+                auto id = bandParamId (b, "time");
+                if (auto* p = apvts.getParameter (id))
+                {
+                    float clamped = juce::jlimit (0.0f, kMaxBandTimeMs, (float) intervalMs);
+                    p->setValueNotifyingHost (p->convertTo0to1 (clamped));
+                }
+            }
+        }
+        lastTapSampleTime = tapSampleTime;
+    }
+    else if (note == kMidiNoteBypass)
+    {
+        if (auto* p = apvts.getParameter ("bypass"))
+            p->setValueNotifyingHost (p->getValue() > 0.5f ? 0.0f : 1.0f);
     }
 }
 

@@ -1,4 +1,7 @@
-# GrooveTap Delay
+# MOKU AI UD Stomp
+
+*(previously "GrooveTap Delay" — renamed; see the trademark note below before
+you make this repo public or distribute it.)*
 
 An 8-band rhythmic / modulation delay plugin (VST3) for macOS, built with [JUCE](https://juce.com).
 
@@ -8,20 +11,32 @@ selectable single or dual waveform) for chorus/flange/pitch-mod style
 modulation. Lines can be routed in parallel or chained in series for up to
 ~5.9 seconds of combined delay. Includes a 999-slot patch bank (90 read-only
 factory patches + 90 user patches that start as editable copies of them,
-plus 819 extra free slots), tap tempo, and MIDI-clock note-division sync
-per band.
+plus 819 extra free slots), tap tempo, MIDI-clock note-division sync per
+band, MIDI-triggerable footswitch actions, and in-window keyboard shortcuts.
 
-## ⚠️ Disclaimer / provenance
+## ⚠️ Disclaimer / provenance — read before publishing or distributing
 
 This project is an **independent, unofficial, fan-made** effect plugin. It is
 **not affiliated with, endorsed by, or produced in association with Yamaha
 Corporation or Allan Holdsworth's estate.**
 
+**Trademark note on the current name.** The product was renamed from
+"GrooveTap Delay" to **"MOKU AI UD Stomp"**, which now contains "UD Stomp"
+verbatim — Yamaha's actual product name. The original name was chosen
+specifically to avoid that overlap. Using a manufacturer's product name as
+part of your own product's name (not just as a factual "inspired by"
+reference) is a materially higher trademark risk than the previous name,
+independent of the factory-preset-data risk noted below. This repository
+stays **private** for that reason too. If you plan to distribute this
+build (even informally), rename it again first, or get clearance.
+
 Its feature set (8 independent delay lines, per-band modulation, tap-tempo,
 patch banking) was **functionally inspired by** the Yamaha UD-Stomp hardware
 pedal. The DSP, UI, and all code in this repository are original
 clean-room implementations — none of it is decompiled or copied from
-Yamaha's firmware or software.
+Yamaha's firmware or software. The faceplate/knob/button artwork was
+separately AI-generated for this project (not scanned or copied from the
+real hardware or its manual) — see `Resources/`.
 
 The 90 **factory preset parameter values** bundled in
 [`Source/FactoryPresets.cpp`](Source/FactoryPresets.cpp) were extracted
@@ -52,14 +67,27 @@ here only to describe the hardware that functionally inspired this plugin.
 - **Topology**: Parallel or Series (series chains all 8 bands for up to
   ~5.9 s of combined delay)
 - **Global**: Effect Level, Direct Level, Direct Pan, Output, Bypass, Tap Tempo
+- **Assign**: a free macro knob that drives whichever global control (Output /
+  Effect Level / Direct Level / Direct Pan) the target selector points at —
+  a live pass-through control, not a persisted DSP parameter, mirroring the
+  hardware's own assignable-control knob
 - **999-slot patch bank**: 90 read-only Factory patches (real names/values
   transcribed from the manual), 90 User patches (start as editable copies of
   the Factory bank), and 819 extra free User slots. Prev/Next, a
   type-a-number jump box, a Browse menu, rename, and Save.
-- **UI** mirrors the hardware's actual panel layout: an EFFECT BAND 1–8
-  select strip, an EDIT FUNCTION cluster (GROUP / SYNC / WAVE), and the two
-  knob rows (TAP/SPEED/DEPTH/PAN/LEVEL and TIME/LOW CUT/HIGH CUT/FEEDBACK).
-  Fully resizable window.
+- **MIDI**: any knob is host-MIDI-mappable for free (e.g. Ableton's own
+  Cmd+M MIDI Map mode — no plugin code needed for that). Additionally the
+  plugin itself listens for 4 fixed MIDI notes mirroring the hardware's
+  footswitches: Select Band (cycle, default note 36/C1), Band On/Off toggle
+  (37/C#1), Tap Tempo (38/D1), Bypass (39/D#1). Not yet remappable via a
+  MIDI-learn UI.
+- **Keyboard shortcuts** (plugin window focused): `1`–`8` select band, `[`
+  / `]` or arrow keys step patches, `T` taps tempo, `B` toggles bypass.
+- **UI**: image-based faceplate, knobs, and footswitches (AI-generated
+  assets, see disclaimer) mirroring the hardware's actual panel layout — an
+  EFFECT BAND 1–8 select strip, a per-band ON/OFF row, an EDIT SETTINGS
+  cluster (GROUP / SYNC / WAVE), and the two 6-knob rows plus a separate
+  Output/Assign strip. Fully resizable window.
 
 ## Known limitations
 
@@ -67,19 +95,31 @@ Things the real hardware has that this plugin intentionally does not
 attempt to replicate, because they have no meaningful DAW-plugin equivalent
 or would require guessing undocumented behavior:
 
-- No MIDI I/O, no S/PDIF digital output, no physical footswitches.
+- No S/PDIF digital output, no AD/DA converter emulation (see below).
 - No phrase/loop-sampling function.
 - Only two global routing topologies (all-Parallel or all-Series) — the
   hardware's arbitrary per-band CONNECT/GROUP sub-groupings (e.g. bands 1–3
-  in series feeding bands 4–8 in parallel) are not implemented.
+  in series feeding bands 4–8 in parallel), inter-band modulation phase
+  sync, and per-band polarity (REV) invert are not implemented yet. Note:
+  our own "SYNC/Clock" feature is a different, original addition (host-tempo
+  note-division sync) and is **not** the same as the hardware's real SYNC
+  function (which links one band's LFO phase to another's) — don't confuse
+  the two.
+- TAP currently does not yet separate the audible-output tap length from
+  the feedback-loop recirculation length (both derive from the same
+  Time × Tap% value) — a known deviation flagged for a future fix.
+- The loop filter currently only shapes feedback repeats, not the first
+  echo — the manual states the cutoff should apply to the first delay too;
+  known deviation, flagged for a future fix.
 - The internal curve mapping Speed/Depth knob values (0–10, confirmed from
   the manual) to actual Hz/ms is an inferred exponential/power-law curve,
   tuned by ear — the manual does not document the hardware's exact internal
   curve, so this is a best-effort match, not a byte-exact reproduction.
-- Two parsed manual columns (per-band "Connect Group" phase/series-linking
-  code, and a phase-invert toggle) are read but not applied — all factory
-  presets load as independent parallel bands regardless of what the manual's
-  CONNECT column says.
+- No parameter smoothing yet on Time/Pan/Level/Feedback — fast automation
+  or knob moves can click; flagged for a future fix.
+- AD/DA converter modeling (the manual's 44.1kHz / 20-bit+3-bit-floating
+  A/D spec) is deliberately not attempted — speculative without reference
+  hardware to measure against, and low value in an all-digital DAW chain.
 
 ## Building (macOS, Apple Silicon or Intel)
 
@@ -87,12 +127,13 @@ Requirements:
 - Xcode command-line tools (`xcode-select --install`)
 - CMake 3.22+ (`brew install cmake`)
 - [JUCE](https://github.com/juce-framework/JUCE) checked out as a sibling
-  directory: `~/dev/JUCE` (or pass `-DJUCE_DIR=/path/to/JUCE` — see below)
+  directory: `~/dev/JUCE` (or edit the `add_subdirectory` path in
+  `CMakeLists.txt`)
 
 ```bash
 git clone --depth 1 https://github.com/juce-framework/JUCE.git ~/dev/JUCE
 git clone <this-repo-url>
-cd GrooveTapDelay
+cd MokuAIUDStomp
 cmake -B build
 cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 ```
@@ -101,16 +142,17 @@ The build automatically copies the built `.vst3` into
 `~/Library/Audio/Plug-Ins/VST3/`. Restart your DAW (or rescan plugins) to
 pick it up.
 
-To use a JUCE checkout at a different path, edit the `add_subdirectory`
-line at the top of `CMakeLists.txt`.
-
 ## Project layout
 
 ```
 Source/
-  PluginProcessor.h/.cpp   DSP, parameters, patch-bank logic
-  PluginEditor.h/.cpp      UI (hardware-inspired layout)
-  FactoryPresets.h/.cpp    The 90 factory patches (see disclaimer above)
+  PluginProcessor.h/.cpp     DSP, parameters, patch-bank logic, MIDI handling
+  PluginEditor.h/.cpp        UI (hardware-inspired layout)
+  GrooveTapLookAndFeel.h     Custom image-based knob/button rendering
+  FactoryPresets.h/.cpp      The 90 factory patches (see disclaimer above)
+Resources/
+  PanelBackground.png        Faceplate texture (AI-generated)
+  Knob.png, Button.png       Knob/footswitch artwork (AI-generated)
 CMakeLists.txt
 ```
 

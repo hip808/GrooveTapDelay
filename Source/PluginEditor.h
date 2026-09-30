@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
+#include "GrooveTapLookAndFeel.h"
 
 class GrooveTapDelayAudioProcessorEditor : public juce::AudioProcessorEditor,
                                             private juce::Timer
@@ -13,12 +14,13 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
 
 private:
     GrooveTapDelayAudioProcessor& proc;
 
     // --- Patch / preset bar ---
-    juce::TextButton prevPatchButton { "<" }, nextPatchButton { ">" }, browsePatchButton { "Browse" }, savePatchButton { "Save" };
+    juce::TextButton prevPatchButton { "<" }, nextPatchButton { ">" }, browsePatchButton { "..." }, savePatchButton { "Sv" };
     juce::Label patchNumberLabel; // editable "###" - type a number + Enter to jump
     juce::Label patchNameLabel;   // editable when the current slot is a User slot
 
@@ -41,18 +43,33 @@ private:
     juce::Label waveLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> waveAttachment;
 
-    juce::ToggleButton bypassButton { "Bypass" };
+    juce::TextButton bypassButton { "Bypass" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
+
+    // ---- ASSIGN: a free "macro" knob that drives whichever global control
+    // the target selector points at (mirrors the hardware's ASSIGNABLE
+    // CONTROL) - a live pass-through, not a persisted DSP parameter. ----
+    juce::Slider assignKnob;
+    juce::Label assignLabel;
+    juce::ComboBox assignTargetBox;
+    juce::Label assignTargetLabel;
+    void applyAssignToTarget();
+    void syncAssignFromTarget();
 
     // --- EFFECT BAND select strip (top left, mirrors the hardware's 1-8 row) ---
     juce::Label effectBandHeading;
     std::array<std::unique_ptr<juce::TextButton>, kNumBands> bandButtons;
     int selectedBand = 0;
 
-    // --- Band title / on-off / tap tempo ---
+    // --- Per-band ON/OFF row (mirrors the hardware's own LED row - each
+    //     band's active state, all 8 visible/toggleable at once, independent
+    //     of which band is currently selected for editing) ---
+    juce::Label bandOnOffHeading;
+    std::array<std::unique_ptr<juce::TextButton>, kNumBands> bandOnOffButtons;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>, kNumBands> bandOnOffAttachments;
+
+    // --- Band title / tap tempo ---
     juce::Label bandTitleLabel;
-    juce::ToggleButton bandEnabledButton { "On" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bandEnabledAttachment;
     juce::TextButton tapTempoButton { "TAP TEMPO" };
     juce::int64 lastTapTimeMs = 0;
 
@@ -80,6 +97,7 @@ private:
     void timerCallback() override;
 
     int globalClusterDividerX = 0;
+    GrooveTapLookAndFeel lookAndFeel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GrooveTapDelayAudioProcessorEditor)
 };
