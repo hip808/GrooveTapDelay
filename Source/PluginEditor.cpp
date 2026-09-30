@@ -4,6 +4,33 @@
 GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTapDelayAudioProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
 {
+    setLookAndFeel (&stompLook);
+    panelTexture = juce::Image (juce::Image::RGB, 1200, 800, false);
+    juce::Random grain (808);
+    for (int y = 0; y < 800; ++y)
+        for (int x = 0; x < 1200; ++x)
+        {
+            auto v = grain.nextInt (17) - 8;
+            panelTexture.setPixelAt (x, y, juce::Colour::fromRGB ((juce::uint8) (18 + v), (juce::uint8) (92 + v), (juce::uint8) (96 + v)));
+        }
+    for (auto* foot : { &selectFoot, &bandEnabledButton, &tapTempoButton, &bypassButton })
+        foot->getProperties().set ("foot", true);
+    bypassButton.setClickingTogglesState (true);
+    bandEnabledButton.setClickingTogglesState (true);
+    addAndMakeVisible (tempoReadout);
+    tempoReadout.setText ("-- BPM", juce::dontSendNotification);
+    tempoReadout.setColour (juce::Label::textColourId, stompLook.amber);
+    tempoReadout.setColour (juce::Label::backgroundColourId, juce::Colour (0xff07191a));
+    tempoReadout.setJustificationType (juce::Justification::centred);
+    tempoReadout.setTooltip ("Last accepted tap interval, limited to this band's 696 ms range");
+    addAndMakeVisible (selectFoot);
+    selectFoot.onClick = [this] { selectBand ((selectedBand + 1) % kNumBands); };
+    setupKnob (assignKnob, assignLabel, "ASSIGN");
+    addAndMakeVisible (assignTarget);
+    assignTarget.addItemList ({ "Time", "Feedback", "Depth", "Speed", "Level", "Tap", "Pan" }, 1);
+    assignTarget.setSelectedId (3, juce::dontSendNotification);
+    assignTarget.onChange = [this] { bindAssign(); };
+    assignKnob.setTooltip ("Adjust the selected band's parameter chosen below this knob");
     // ---- Patch / preset bar ----
     addAndMakeVisible (prevPatchButton);
     prevPatchButton.onClick = [this] { goToPatch (proc.getCurrentPatchIndex() - 1); };
@@ -13,7 +40,7 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
 
     addAndMakeVisible (patchNumberLabel);
     patchNumberLabel.setJustificationType (juce::Justification::centred);
-    patchNumberLabel.setColour (juce::Label::backgroundColourId, juce::Colour (0xff17181d));
+    patchNumberLabel.setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
     patchNumberLabel.setEditable (false, true, false);
     patchNumberLabel.onTextChange = [this]
     {
@@ -46,6 +73,22 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
             proc.savePatch (idx, patchNameLabel.getText());
             refreshPatchDisplay();
         }
+        else
+        {
+            juce::PopupMenu slots;
+            for (int i = kNumFactorySlots; i < kNumFactorySlots + kNumUserSlots; ++i)
+                slots.addItem (i + 1, juce::String (i + 1) + "  " + proc.getPatchName (i));
+            slots.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (savePatchButton),
+                [safe = juce::Component::SafePointer<GrooveTapDelayAudioProcessorEditor> (this)] (int result)
+                {
+                    if (safe != nullptr && result > 0)
+                    {
+                        auto name = safe->proc.getPatchName (safe->proc.getCurrentPatchIndex());
+                        safe->proc.savePatch (result - 1, name);
+                        safe->goToPatch (result - 1);
+                    }
+                });
+        }
     };
 
     // ---- EDIT FUNCTION cluster (top right): GROUP / SYNC / WAVE / BYPASS ----
@@ -54,7 +97,7 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
 
     addAndMakeVisible (groupBox);
     groupBox.addItemList (GrooveTapDelayAudioProcessor::topologyChoices, 1);
-    setupGroupLabel (groupLabel, "GROUP");
+    setupGroupLabel (groupLabel, "ROUTING");
     groupLabel.attachToComponent (&groupBox, false);
     addAndMakeVisible (groupLabel);
     groupAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
@@ -62,7 +105,7 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
 
     addAndMakeVisible (syncBox);
     syncBox.addItemList (GrooveTapDelayAudioProcessor::clockChoices, 1);
-    setupGroupLabel (syncLabel, "SYNC");
+    setupGroupLabel (syncLabel, "CLOCK");
     syncLabel.attachToComponent (&syncBox, false);
     addAndMakeVisible (syncLabel);
     syncBox.onChange = [this] { timeKnob.setEnabled (syncBox.getSelectedItemIndex() <= 0); };
@@ -84,9 +127,20 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
     for (int b = 0; b < kNumBands; ++b)
     {
         auto btn = std::make_unique<juce::TextButton> (juce::String (b + 1));
+        btn->getProperties().set ("selector", true);
         btn->onClick = [this, b] { selectBand (b); };
         addAndMakeVisible (*btn);
+        btn->setTooltip ("Select band " + juce::String (b + 1) + " for editing");
         bandButtons[(size_t) b] = std::move (btn);
+        auto power = std::make_unique<juce::TextButton> ("ON");
+        power->setClickingTogglesState (true);
+        power->getProperties().set ("power", true);
+        power->setTitle ("Band " + juce::String (b + 1) + " on/off");
+        power->setTooltip ("Enable or disable band " + juce::String (b + 1) + " without changing selection");
+        addAndMakeVisible (*power);
+        bandPowerAttachments[(size_t) b] = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>
+            (proc.apvts, GrooveTapDelayAudioProcessor::bandParamId (b, "enabled"), *power);
+        bandPowerButtons[(size_t) b] = std::move (power);
     }
 
     // ---- Band title / on-off / tap tempo ----
@@ -97,10 +151,12 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
     addAndMakeVisible (bandEnabledButton);
 
     addAndMakeVisible (tapTempoButton);
+    tapTempoButton.setTooltip ("Tap twice to set the selected band's Time (maximum 696 ms); unavailable with host clock sync");
     tapTempoButton.onClick = [this]
     {
-        auto now = juce::Time::currentTimeMillis();
-        if (lastTapTimeMs != 0)
+        if (syncBox.getSelectedItemIndex() > 0) return;
+        auto now = juce::Time::getMillisecondCounterHiRes();
+        if (lastTapTimeMs > 0)
         {
             auto intervalMs = (float) (now - lastTapTimeMs);
             if (intervalMs > 50.0f && intervalMs < 3000.0f)
@@ -109,7 +165,10 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
                 if (auto* param = proc.apvts.getParameter (id))
                 {
                     float clamped = juce::jlimit (0.0f, kMaxBandTimeMs, intervalMs);
+                    param->beginChangeGesture();
                     param->setValueNotifyingHost (param->convertTo0to1 (clamped));
+                    param->endChangeGesture();
+                    tempoReadout.setText (juce::String (60000.0f / clamped, 1) + " BPM", juce::dontSendNotification);
                 }
             }
         }
@@ -117,7 +176,7 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
     };
 
     // ---- Top knob row: TAP(Sync%) / SPEED / DEPTH / PAN / LEVEL ----
-    setupKnob (tapKnob, tapLabel, "Tap (Sync %)");
+    setupKnob (tapKnob, tapLabel, "TAP");
     setupKnob (speedKnob, speedLabel, "Speed");
     setupKnob (depthKnob, depthLabel, "Depth");
     setupKnob (panKnob, panLabel, "Pan");
@@ -151,18 +210,19 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
     startTimerHz (8);
 
     setResizable (true, true);
-    setResizeLimits (780, 490, 1400, 920);
-    setSize (900, 590);
+    setResizeLimits (1000, 667, 1800, 1200);
+    getConstrainer()->setFixedAspectRatio (1.5);
+    setSize (1200, 800);
 }
 
-GrooveTapDelayAudioProcessorEditor::~GrooveTapDelayAudioProcessorEditor() { stopTimer(); }
+GrooveTapDelayAudioProcessorEditor::~GrooveTapDelayAudioProcessorEditor() { stopTimer(); setLookAndFeel (nullptr); }
 
 void GrooveTapDelayAudioProcessorEditor::setupKnob (juce::Slider& s, juce::Label& l, const juce::String& text)
 {
     s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 64, 16);
     addAndMakeVisible (s);
-    l.setText (text, juce::dontSendNotification);
+    l.setText (text.toUpperCase(), juce::dontSendNotification);
     l.setFont (juce::FontOptions (12.0f));
     l.setJustificationType (juce::Justification::centred);
     l.attachToComponent (&s, false);
@@ -171,9 +231,9 @@ void GrooveTapDelayAudioProcessorEditor::setupKnob (juce::Slider& s, juce::Label
 
 void GrooveTapDelayAudioProcessorEditor::setupGroupLabel (juce::Label& l, const juce::String& text, bool bold)
 {
-    l.setText (text, juce::dontSendNotification);
+    l.setText (text.toUpperCase(), juce::dontSendNotification);
     l.setFont (juce::FontOptions (11.0f, bold ? juce::Font::bold : juce::Font::plain));
-    l.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    l.setColour (juce::Label::textColourId, stompLook.cream);
     l.setJustificationType (juce::Justification::centredLeft);
 }
 
@@ -185,8 +245,9 @@ void GrooveTapDelayAudioProcessorEditor::refreshPatchDisplay()
 
     bool editable = proc.isPatchEditable (idx);
     patchNameLabel.setEditable (false, editable, false);
-    patchNameLabel.setColour (juce::Label::textColourId, editable ? juce::Colours::white : juce::Colour (0xffbbbbbb));
-    savePatchButton.setEnabled (editable);
+    patchNameLabel.setColour (juce::Label::textColourId, stompLook.amber);
+    savePatchButton.setEnabled (true);
+    savePatchButton.setTooltip (editable ? "Save changes to this user slot" : "Save current settings to a user slot");
 
     juce::String bank = idx < kNumFactorySlots ? "Factory"
                        : idx < kNumFactorySlots + kNumUserSlots ? "User" : "User (extra)";
@@ -198,6 +259,8 @@ void GrooveTapDelayAudioProcessorEditor::goToPatch (int index)
 {
     auto n = proc.getNumPatches();
     index = ((index % n) + n) % n; // wrap both directions
+    lastTapTimeMs = 0;
+    tempoReadout.setText ("-- BPM", juce::dontSendNotification);
     proc.loadPatch (index);
     refreshPatchDisplay();
     // Existing per-band slider/combo attachments auto-refresh from the new
@@ -222,15 +285,17 @@ void GrooveTapDelayAudioProcessorEditor::showPatchBrowser()
     menu.addItem (-1, "Extra User slots 181-999: type the number in the box, or use < / >", false);
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (browsePatchButton),
-        [this] (int result)
+        [safe = juce::Component::SafePointer<GrooveTapDelayAudioProcessorEditor> (this)] (int result)
         {
-            if (result >= 1)
-                goToPatch (result - 1);
+            if (safe != nullptr && result >= 1)
+                safe->goToPatch (result - 1);
         });
 }
 
 void GrooveTapDelayAudioProcessorEditor::selectBand (int bandIndex)
 {
+    lastTapTimeMs = 0;
+    tempoReadout.setText ("-- BPM", juce::dontSendNotification);
     selectedBand = juce::jlimit (0, kNumBands - 1, bandIndex);
     bandTitleLabel.setText ("Effect Band " + juce::String (selectedBand + 1), juce::dontSendNotification);
 
@@ -241,6 +306,7 @@ void GrooveTapDelayAudioProcessorEditor::selectBand (int bandIndex)
     // read that programmatic change as user input and write it back into the
     // PREVIOUS band's parameter. Resetting first removes the old listener
     // before any value gets pushed, so bands can no longer cross-talk.
+    assignAttachment.reset();
     bandEnabledAttachment.reset();
     tapAttachment.reset();
     speedAttachment.reset();
@@ -275,156 +341,100 @@ void GrooveTapDelayAudioProcessorEditor::selectBand (int bandIndex)
     for (int b = 0; b < kNumBands; ++b)
         bandButtons[(size_t) b]->setToggleState (b == selectedBand, juce::dontSendNotification);
 
+    bindAssign();
     repaint();
+}
+
+void GrooveTapDelayAudioProcessorEditor::bindAssign()
+{
+    assignAttachment.reset();
+    static const char* suffixes[] = { "time", "feedback", "lfodepth", "lfospeed", "level", "syncpct", "pan" };
+    auto index = juce::jlimit (0, 6, assignTarget.getSelectedItemIndex());
+    assignAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
+        (proc.apvts, GrooveTapDelayAudioProcessor::bandParamId (selectedBand, suffixes[index]), assignKnob);
+    assignKnob.setEnabled (index != 0 || syncBox.getSelectedItemIndex() <= 0);
 }
 
 void GrooveTapDelayAudioProcessorEditor::timerCallback()
 {
-    for (int b = 0; b < kNumBands; ++b)
-    {
-        auto id = GrooveTapDelayAudioProcessor::bandParamId (b, "enabled");
-        bool on = false;
-        if (auto* param = proc.apvts.getParameter (id))
-            on = param->getValue() > 0.5f;
-
-        auto colour = on ? juce::Colour (0xff4caf50) : juce::Colour (0xff3a3a42);
-        bandButtons[(size_t) b]->setColour (juce::TextButton::buttonColourId, colour);
-    }
+    tapTempoButton.setEnabled (syncBox.getSelectedItemIndex() <= 0);
+    if (! patchNameLabel.isBeingEdited() && ! patchNumberLabel.isBeingEdited()) refreshPatchDisplay();
+    assignKnob.setEnabled (assignTarget.getSelectedId() != 1 || syncBox.getSelectedItemIndex() <= 0);
 }
 
 void GrooveTapDelayAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff20232a));
-
-    auto header = getLocalBounds().removeFromTop (30).reduced (14, 4);
-    g.setColour (juce::Colours::white);
-    g.setFont (juce::FontOptions (17.0f, juce::Font::bold));
-    g.drawFittedText ("GrooveTap Delay", header.removeFromLeft (header.getWidth() / 2),
-                       juce::Justification::centredLeft, 1);
-
-    g.setFont (juce::FontOptions (11.0f));
-    g.setColour (juce::Colours::lightgrey);
-    g.drawFittedText ("8-Band Rhythmic / Modulation Delay", header,
-                       juce::Justification::centredRight, 1);
-
-    // Panel background behind the band-editing area.
-    auto panel = getLocalBounds();
-    panel.removeFromTop (30 + 30 + 92 + 30); // header + patch bar + band/edit-function row + band-title row
-    g.setColour (juce::Colour (0xff2b2e36));
-    g.fillRoundedRectangle (panel.reduced (10, 4).toFloat(), 6.0f);
-
-    // Divider between per-band knobs and the global output cluster.
-    g.setColour (juce::Colour (0xff44454e));
-    g.drawVerticalLine (globalClusterDividerX, (float) panel.getY() + 10.0f, (float) panel.getBottom() - 10.0f);
+    g.addTransform (juce::AffineTransform::scale ((float) getWidth() / 1200.0f, (float) getHeight() / 800.0f));
+    g.fillAll (juce::Colour (0xff141a1a));
+    g.drawImageAt (panelTexture, 0, 0);
+    g.setGradientFill ({juce::Colours::white.withAlpha (0.08f), 0, 0, juce::Colours::black.withAlpha (0.22f), 0, 800, false});
+    g.fillAll();
+    g.setColour (juce::Colour (0xff121c1c));
+    g.drawRoundedRectangle (5, 5, 1190, 790, 15, 12);
+    g.setColour (stompLook.cream.withAlpha (0.4f));
+    g.drawRoundedRectangle (14, 14, 1172, 772, 10, 1);
+    g.setColour (juce::Colour (0xff101717)); g.fillRect (8, 487, 1184, 22);
+    g.setColour (juce::Colour (0xff72918c)); g.drawHorizontalLine (490, 14, 1186);
+    g.setColour (juce::Colours::black.withAlpha (0.7f)); g.fillRoundedRectangle (42, 94, 282, 68, 6);
+    g.setColour (stompLook.cream.withAlpha (0.4f)); g.drawRoundedRectangle (42, 94, 282, 68, 6, 2);
+    g.setColour (stompLook.cream);
+    g.setFont (juce::FontOptions ("Arial", 44.0f, juce::Font::bold | juce::Font::italic));
+    g.drawText ("MOKU AI", 45, 30, 285, 58, juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions ("Arial", 46.0f, juce::Font::bold | juce::Font::italic));
+    g.drawText ("MOKU AI UD Stomp", 45, 525, 830, 60, juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (14, juce::Font::bold));
+    g.drawText ("8-BAND MODULATION DELAY", 48, 585, 500, 24, juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (11, juce::Font::bold));
+    g.drawText ("SELECT", 336, 89, 56, 30, juce::Justification::centredRight);
+    g.drawText ("ON/OFF", 336, 133, 56, 30, juce::Justification::centredRight);
+    g.setColour (stompLook.cream.withAlpha (0.4f)); g.drawVerticalLine (1048, 205, 464);
+    for (auto pt : {juce::Point<float> (24, 26), {1176, 26}, {24, 466}, {1176, 466}, {24, 528}, {1176, 528}, {24, 775}, {1176, 775}})
+    {
+        g.setColour (juce::Colour (0xff0a1414)); g.fillEllipse (pt.x - 7, pt.y - 7, 14, 14);
+        g.setColour (juce::Colour (0xff82948d)); g.drawEllipse (pt.x - 7, pt.y - 7, 14, 14, 1);
+        g.drawLine (pt.x - 3, pt.y - 3, pt.x + 3, pt.y + 3, 1.5f);
+    }
 }
 
 void GrooveTapDelayAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds();
-
-    area.removeFromTop (30); // header text (painted, not a component)
-
-    // --- Row: patch / preset bar ---
-    auto patchBar = area.removeFromTop (30).reduced (14, 3);
-    prevPatchButton.setBounds (patchBar.removeFromLeft (28));
-    patchBar.removeFromLeft (4);
-    patchNumberLabel.setBounds (patchBar.removeFromLeft (44));
-    patchBar.removeFromLeft (6);
-    nextPatchButton.setBounds (patchBar.removeFromLeft (28));
-    patchBar.removeFromLeft (10);
-    savePatchButton.setBounds (patchBar.removeFromRight (64));
-    patchBar.removeFromRight (6);
-    browsePatchButton.setBounds (patchBar.removeFromRight (72));
-    patchBar.removeFromRight (10);
-    patchNameLabel.setBounds (patchBar);
-
-    // --- Row: EFFECT BAND strip (left) + EDIT FUNCTION cluster (right) ---
-    // Tall enough for: a section heading, a gap, the combo boxes' own
-    // auto-positioned labels (GROUP/SYNC/WAVE sit directly above each box),
-    // and the boxes themselves - none of these bands may overlap.
-    auto topRow = area.removeFromTop (92).reduced (14, 4);
-
-    auto bandArea = topRow.removeFromLeft (juce::jmax (360, topRow.getWidth() * 2 / 5));
-    effectBandHeading.setBounds (bandArea.removeFromTop (16));
-    bandArea.removeFromTop (4);
-    auto bandBtnRow = bandArea.removeFromTop (34);
-    int bandBtnW = juce::jmin (56, bandBtnRow.getWidth() / kNumBands);
+    auto place = [this] (juce::Component& c, int x, int y, int w, int h)
+    {
+        c.setBounds (juce::roundToInt (x * getWidth() / 1200.0), juce::roundToInt (y * getHeight() / 800.0),
+                     juce::roundToInt (w * getWidth() / 1200.0), juce::roundToInt (h * getHeight() / 800.0));
+    };
+    place (patchNumberLabel, 50, 110, 54, 38);
+    place (patchNameLabel, 106, 110, 210, 38);
+    patchNumberLabel.setColour (juce::Label::textColourId, stompLook.amber);
+    patchNumberLabel.setFont (juce::FontOptions (21));
+    patchNameLabel.setFont (juce::FontOptions (18, juce::Font::bold));
+    place (prevPatchButton, 42, 179, 61, 29); prevPatchButton.setButtonText ("PREV");
+    place (nextPatchButton, 111, 179, 61, 29); nextPatchButton.setButtonText ("NEXT");
+    place (browsePatchButton, 180, 179, 73, 29);
+    place (savePatchButton, 261, 179, 63, 29);
+    place (effectBandHeading, 398, 40, 390, 25);
     for (int b = 0; b < kNumBands; ++b)
-        bandButtons[(size_t) b]->setBounds (bandBtnRow.removeFromLeft (bandBtnW).reduced (2, 0));
-
-    topRow.removeFromLeft (20);
-    editFunctionHeading.setBounds (topRow.removeFromTop (16));
-    topRow.removeFromTop (6);
-    auto editRow = topRow; // remaining height holds each combo's own label + the combo
-    int editW = editRow.getWidth() / 4;
-    auto placeEditCombo = [&editRow, editW] (juce::ComboBox& box)
     {
-        auto slot = editRow.removeFromLeft (editW);
-        slot.removeFromTop (16); // room for the attached GROUP/SYNC/WAVE label
-        box.setBounds (slot.reduced (4, 2));
-    };
-    placeEditCombo (groupBox);
-    placeEditCombo (syncBox);
-    placeEditCombo (waveBox);
-    editRow.removeFromTop (16);
-    bypassButton.setBounds (editRow.reduced (4, 2));
-
-    // --- Row: band title / on-off / tap tempo ---
-    auto titleRow = area.removeFromTop (30).reduced (16, 2);
-    bandTitleLabel.setBounds (titleRow.removeFromLeft (160));
-    bandEnabledButton.setBounds (titleRow.removeFromLeft (60));
-    tapTempoButton.setBounds (titleRow.removeFromRight (110));
-
-    area.removeFromTop (6);
-
-    // Reserve space so each knob's auto-positioned label (which sits directly
-    // above the slider) never lands on top of the row above it.
-    constexpr int kLabelGap = 20;
-
-    // Split remaining area into two equal knob rows, and split those into a
-    // per-band section (left) and the global output cluster (right).
-    auto knobsArea = area.reduced (16, 4);
-    auto topKnobRow = knobsArea.removeFromTop (knobsArea.getHeight() / 2);
-    auto bottomKnobRow = knobsArea;
-
-    int globalClusterW = juce::jmin (280, topKnobRow.getWidth() * 3 / 10);
-    globalClusterDividerX = topKnobRow.getRight() - globalClusterW - 6;
-
-    auto topPerBand = topKnobRow.withTrimmedRight (globalClusterW + 12);
-    auto topGlobal = topKnobRow.removeFromRight (globalClusterW);
-
-    auto bottomPerBand = bottomKnobRow.withTrimmedRight (globalClusterW + 12);
-
-    topPerBand.removeFromTop (kLabelGap);
-    int perBandKnobW = topPerBand.getWidth() / 5;
-    auto placeIn = [] (juce::Rectangle<int>& row, juce::Slider& s, int w)
-    {
-        s.setBounds (row.removeFromLeft (w).reduced (6, 0));
-    };
-    placeIn (topPerBand, tapKnob, perBandKnobW);
-    placeIn (topPerBand, speedKnob, perBandKnobW);
-    placeIn (topPerBand, depthKnob, perBandKnobW);
-    placeIn (topPerBand, panKnob, perBandKnobW);
-    placeIn (topPerBand, levelKnob, perBandKnobW);
-
-    bottomPerBand.removeFromTop (kLabelGap);
-    int bottomKnobW = bottomPerBand.getWidth() / 4;
-    placeIn (bottomPerBand, timeKnob, bottomKnobW);
-    placeIn (bottomPerBand, lowCutKnob, bottomKnobW);
-    placeIn (bottomPerBand, highCutKnob, bottomKnobW);
-    placeIn (bottomPerBand, feedbackKnob, bottomKnobW);
-
-    topGlobal.removeFromTop (kLabelGap);
-    int globalKnobW = topGlobal.getWidth() / 2;
-    auto globalTopLeft = topGlobal.removeFromLeft (globalKnobW);
-    auto globalTopRight = topGlobal;
-    placeIn (globalTopLeft, effectLevelKnob, globalTopLeft.getWidth());
-    placeIn (globalTopRight, directLevelKnob, globalTopRight.getWidth());
-
-    auto globalBottomRow = bottomKnobRow.removeFromRight (globalClusterW);
-    globalBottomRow.removeFromTop (kLabelGap);
-    auto globalBottomLeft = globalBottomRow.removeFromLeft (globalKnobW);
-    auto globalBottomRight = globalBottomRow;
-    placeIn (globalBottomLeft, directPanKnob, globalBottomLeft.getWidth());
-    placeIn (globalBottomRight, outputKnob, globalBottomRight.getWidth());
+        place (*bandButtons[(size_t) b], 396 + b * 47, 74, 40, 46);
+        place (*bandPowerButtons[(size_t) b], 396 + b * 47, 130, 40, 34);
+    }
+    place (editFunctionHeading, 808, 40, 350, 25);
+    place (groupBox, 808, 105, 107, 34);
+    place (syncBox, 925, 105, 107, 34);
+    place (waveBox, 1042, 105, 118, 34);
+    place (bandTitleLabel, 399, 171, 300, 23);
+    bandTitleLabel.setFont (juce::FontOptions (11));
+    auto knob = [&place] (juce::Slider& s, int col, int y) { place (s, 352 + col * 115, y, 105, 112); };
+    knob (tapKnob, 0, 223); knob (speedKnob, 1, 223); knob (depthKnob, 2, 223);
+    knob (panKnob, 3, 223); knob (levelKnob, 4, 223); knob (effectLevelKnob, 5, 223);
+    knob (timeKnob, 0, 367); knob (lowCutKnob, 1, 367); knob (highCutKnob, 2, 367);
+    knob (feedbackKnob, 3, 367); knob (directPanKnob, 4, 367); knob (directLevelKnob, 5, 367);
+    place (outputKnob, 1060, 303, 106, 120);
+    place (assignKnob, 99, 284, 160, 153);
+    place (assignTarget, 99, 443, 160, 28);
+    place (selectFoot, 105, 634, 175, 129);
+    place (bandEnabledButton, 371, 634, 175, 129);
+    place (tapTempoButton, 637, 634, 175, 129);
+    place (tempoReadout, 796, 672, 87, 30);
+    place (bypassButton, 903, 634, 175, 129);
 }

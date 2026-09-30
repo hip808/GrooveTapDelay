@@ -32,6 +32,7 @@ struct DelayBand
     int writePos = 0;
 
     double lfoPhase = 0.0;
+    float lastLowCut = -1.0f, lastHighCut = -1.0f;
 
     juce::dsp::IIR::Filter<float> loopLowCutL, loopLowCutR;   // high-pass (cuts lows)
     juce::dsp::IIR::Filter<float> loopHighCutL, loopHighCutR; // low-pass  (cuts highs)
@@ -44,6 +45,10 @@ struct DelayBand
         writePos = 0;
         lfoPhase = 0.0;
 
+        lastLowCut = lastHighCut = -1.0f;
+        // Allocate second-order coefficient storage before entering the callback.
+        for (auto* filter : { &loopLowCutL, &loopLowCutR, &loopHighCutL, &loopHighCutR })
+            filter->coefficients = new juce::dsp::IIR::Coefficients<float> (1, 0, 0, 1, 0, 0);
         juce::dsp::ProcessSpec spec { sampleRate, 512, 1 };
         loopLowCutL.prepare (spec);
         loopLowCutR.prepare (spec);
@@ -56,6 +61,9 @@ struct DelayBand
         std::fill (bufL.begin(), bufL.end(), 0.0f);
         std::fill (bufR.begin(), bufR.end(), 0.0f);
         writePos = 0;
+        lfoPhase = 0.0;
+        loopLowCutL.reset(); loopLowCutR.reset();
+        loopHighCutL.reset(); loopHighCutR.reset();
     }
 };
 
@@ -67,17 +75,18 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "GrooveTap Delay"; }
+    const juce::String getName() const override { return "MOKU AI UD Stomp"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 6.0; }
+    double getTailLengthSeconds() const override;
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -103,7 +112,7 @@ public:
     int getNumPatches() const { return kTotalPatches; }
     int getCurrentPatchIndex() const { return currentPatchIndex; }
     juce::String getPatchName (int index) const;
-    bool isPatchEditable (int index) const { return index >= kNumFactorySlots; }
+    bool isPatchEditable (int index) const { return index >= kNumFactorySlots && index < kTotalPatches; }
     void loadPatch (int index);
     void savePatch (int index, const juce::String& newName);
     void renamePatch (int index, const juce::String& newName);
@@ -146,7 +155,8 @@ private:
 
     juce::StringArray patchNames;
     juce::StringArray patchXmlStore; // per-slot saved ValueTree XML; empty = not yet saved
-    int currentPatchIndex = 0;
+    std::atomic<int> currentPatchIndex { 0 };
+    mutable juce::CriticalSection patchLock;
     juce::String defaultStateXml;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GrooveTapDelayAudioProcessor)
