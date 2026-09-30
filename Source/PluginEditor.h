@@ -5,12 +5,18 @@
 #include "PluginProcessor.h"
 #include "GrooveTapLookAndFeel.h"
 
-class GrooveTapDelayAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                            private juce::Timer
+// All the actual UI lives here, laid out at a fixed "native" resolution
+// (see kNativeWidth/Height in the .cpp). The outer AudioProcessorEditor
+// just scales this whole panel up/down via a transform to fit whatever
+// window size the user resizes to - that's what lets the window shrink to
+// a fraction of its native size without every knob/label needing its own
+// tiny-size layout logic.
+class GrooveTapContentPanel : public juce::Component,
+                               private juce::Timer
 {
 public:
-    explicit GrooveTapDelayAudioProcessorEditor (GrooveTapDelayAudioProcessor&);
-    ~GrooveTapDelayAudioProcessorEditor() override;
+    explicit GrooveTapContentPanel (GrooveTapDelayAudioProcessor&);
+    ~GrooveTapContentPanel() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -98,6 +104,21 @@ private:
 
     int globalClusterDividerX = 0;
     GrooveTapLookAndFeel lookAndFeel;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GrooveTapContentPanel)
+};
+
+class GrooveTapDelayAudioProcessorEditor : public juce::AudioProcessorEditor
+{
+public:
+    explicit GrooveTapDelayAudioProcessorEditor (GrooveTapDelayAudioProcessor&);
+    ~GrooveTapDelayAudioProcessorEditor() override = default;
+
+    void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
+
+private:
+    GrooveTapContentPanel content;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GrooveTapDelayAudioProcessorEditor)
 };

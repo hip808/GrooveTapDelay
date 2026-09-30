@@ -1,11 +1,16 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTapDelayAudioProcessor& p)
-    : AudioProcessorEditor (&p), proc (p)
+// The panel's fixed design resolution. The outer AudioProcessorEditor scales
+// this whole panel (via a transform) to fit whatever window size the user
+// resizes to, so this never needs to change for different window sizes.
+static constexpr int kNativeWidth = 900;
+static constexpr int kNativeHeight = 628;
+
+GrooveTapContentPanel::GrooveTapContentPanel (GrooveTapDelayAudioProcessor& p)
+    : proc (p)
 {
     setLookAndFeel (&lookAndFeel);
-    setWantsKeyboardFocus (true);
 
     // ---- Patch / preset bar ----
     for (auto* b : { &prevPatchButton, &nextPatchButton, &browsePatchButton, &savePatchButton })
@@ -188,18 +193,17 @@ GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTa
     syncAssignFromTarget();
     startTimerHz (8);
 
-    setResizable (true, true);
-    setResizeLimits (780, 528, 1400, 960);
-    setSize (900, 628);
+    setSize (kNativeWidth, kNativeHeight); // fixed native layout size - the outer
+                                            // editor window scales this panel visually
 }
 
-GrooveTapDelayAudioProcessorEditor::~GrooveTapDelayAudioProcessorEditor()
+GrooveTapContentPanel::~GrooveTapContentPanel()
 {
     stopTimer();
     setLookAndFeel (nullptr);
 }
 
-void GrooveTapDelayAudioProcessorEditor::setupKnob (juce::Slider& s, juce::Label& l, const juce::String& text)
+void GrooveTapContentPanel::setupKnob (juce::Slider& s, juce::Label& l, const juce::String& text)
 {
     s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 64, 16);
@@ -211,7 +215,7 @@ void GrooveTapDelayAudioProcessorEditor::setupKnob (juce::Slider& s, juce::Label
     addAndMakeVisible (l);
 }
 
-void GrooveTapDelayAudioProcessorEditor::setupGroupLabel (juce::Label& l, const juce::String& text, bool bold)
+void GrooveTapContentPanel::setupGroupLabel (juce::Label& l, const juce::String& text, bool bold)
 {
     l.setText (text, juce::dontSendNotification);
     l.setFont (juce::FontOptions (11.0f, bold ? juce::Font::bold : juce::Font::plain));
@@ -219,7 +223,7 @@ void GrooveTapDelayAudioProcessorEditor::setupGroupLabel (juce::Label& l, const 
     l.setJustificationType (juce::Justification::centredLeft);
 }
 
-void GrooveTapDelayAudioProcessorEditor::refreshPatchDisplay()
+void GrooveTapContentPanel::refreshPatchDisplay()
 {
     auto idx = proc.getCurrentPatchIndex();
     patchNumberLabel.setText (juce::String (idx + 1).paddedLeft ('0', 3), juce::dontSendNotification);
@@ -236,7 +240,7 @@ void GrooveTapDelayAudioProcessorEditor::refreshPatchDisplay()
                                                  : " - read only"));
 }
 
-void GrooveTapDelayAudioProcessorEditor::goToPatch (int index)
+void GrooveTapContentPanel::goToPatch (int index)
 {
     auto n = proc.getNumPatches();
     index = ((index % n) + n) % n; // wrap both directions
@@ -246,7 +250,7 @@ void GrooveTapDelayAudioProcessorEditor::goToPatch (int index)
     // parameter values via their own listener callbacks - no rebind needed.
 }
 
-void GrooveTapDelayAudioProcessorEditor::showPatchBrowser()
+void GrooveTapContentPanel::showPatchBrowser()
 {
     juce::PopupMenu menu;
 
@@ -271,7 +275,7 @@ void GrooveTapDelayAudioProcessorEditor::showPatchBrowser()
         });
 }
 
-void GrooveTapDelayAudioProcessorEditor::selectBand (int bandIndex)
+void GrooveTapContentPanel::selectBand (int bandIndex)
 {
     selectedBand = juce::jlimit (0, kNumBands - 1, bandIndex);
     bandTitleLabel.setText ("Effect Band " + juce::String (selectedBand + 1), juce::dontSendNotification);
@@ -318,7 +322,7 @@ void GrooveTapDelayAudioProcessorEditor::selectBand (int bandIndex)
     repaint();
 }
 
-void GrooveTapDelayAudioProcessorEditor::timerCallback()
+void GrooveTapContentPanel::timerCallback()
 {
     // Keep the EFFECT BAND select strip's highlight in sync with which band
     // is currently being edited - a cheap, idempotent refresh.
@@ -341,7 +345,7 @@ void GrooveTapDelayAudioProcessorEditor::timerCallback()
         selectBand (midiBand);
 }
 
-void GrooveTapDelayAudioProcessorEditor::applyAssignToTarget()
+void GrooveTapContentPanel::applyAssignToTarget()
 {
     static const char* ids[] = { "output", "effectLevel", "directLevel", "directPan" };
     int idx = assignTargetBox.getSelectedItemIndex();
@@ -350,7 +354,7 @@ void GrooveTapDelayAudioProcessorEditor::applyAssignToTarget()
         p->setValueNotifyingHost ((float) assignKnob.getValue());
 }
 
-void GrooveTapDelayAudioProcessorEditor::syncAssignFromTarget()
+void GrooveTapContentPanel::syncAssignFromTarget()
 {
     static const char* ids[] = { "output", "effectLevel", "directLevel", "directPan" };
     int idx = assignTargetBox.getSelectedItemIndex();
@@ -359,7 +363,7 @@ void GrooveTapDelayAudioProcessorEditor::syncAssignFromTarget()
         assignKnob.setValue (p->getValue(), juce::dontSendNotification);
 }
 
-bool GrooveTapDelayAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+bool GrooveTapContentPanel::keyPressed (const juce::KeyPress& key)
 {
     auto c = key.getTextCharacter();
     if (c >= '1' && c <= '8') { selectBand (c - '1'); return true; }
@@ -373,7 +377,7 @@ bool GrooveTapDelayAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
     return false;
 }
 
-void GrooveTapDelayAudioProcessorEditor::paint (juce::Graphics& g)
+void GrooveTapContentPanel::paint (juce::Graphics& g)
 {
     auto full = getLocalBounds();
 
@@ -410,7 +414,7 @@ void GrooveTapDelayAudioProcessorEditor::paint (juce::Graphics& g)
     g.drawVerticalLine (globalClusterDividerX, (float) panel.getY() + 10.0f, (float) panel.getBottom() - 10.0f);
 }
 
-void GrooveTapDelayAudioProcessorEditor::resized()
+void GrooveTapContentPanel::resized()
 {
     auto area = getLocalBounds();
 
@@ -527,4 +531,39 @@ void GrooveTapDelayAudioProcessorEditor::resized()
 
     outputStripBottom.removeFromTop (kLabelGap);
     placeIn (outputStripBottom, assignKnob, outputStripBottom.getWidth());
+}
+
+//==============================================================================
+// Outer AudioProcessorEditor: owns the resizable window and just scales the
+// fixed-resolution GrooveTapContentPanel to fit it, letting the window shrink
+// down to a fraction of its native size without any per-control tiny-layout
+// logic (every control just gets visually smaller, uniformly, together).
+GrooveTapDelayAudioProcessorEditor::GrooveTapDelayAudioProcessorEditor (GrooveTapDelayAudioProcessor& p)
+    : AudioProcessorEditor (&p), content (p)
+{
+    addAndMakeVisible (content);
+    setWantsKeyboardFocus (true);
+
+    setResizable (true, true);
+    setResizeLimits (kNativeWidth / 3, kNativeHeight / 3, kNativeWidth * 2, kNativeHeight * 2);
+    setSize (kNativeWidth, kNativeHeight);
+}
+
+void GrooveTapDelayAudioProcessorEditor::resized()
+{
+    float scale = juce::jmin ((float) getWidth() / (float) kNativeWidth,
+                               (float) getHeight() / (float) kNativeHeight);
+
+    float scaledW = kNativeWidth * scale;
+    float scaledH = kNativeHeight * scale;
+    float offsetX = ((float) getWidth() - scaledW) * 0.5f;
+    float offsetY = ((float) getHeight() - scaledH) * 0.5f;
+
+    content.setTransform (juce::AffineTransform::scale (scale).translated (offsetX, offsetY));
+    content.setBounds (0, 0, kNativeWidth, kNativeHeight);
+}
+
+bool GrooveTapDelayAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    return content.keyPressed (key);
 }
