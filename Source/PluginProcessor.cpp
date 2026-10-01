@@ -224,10 +224,14 @@ bool GrooveTapDelayAudioProcessor::isBusesLayoutSupported (const BusesLayout& la
 
 static inline float readInterpolated (const std::vector<float>& buf, int bufLen, float readPosF)
 {
-    while (readPosF < 0.0f) readPosF += (float) bufLen;
-    int i0 = (int) readPosF % bufLen;
+    // A single fmod-based wrap instead of a while-loop: bounded cost
+    // regardless of how far negative readPosF is (defence in depth - it
+    // shouldn't ever be more than one bufLen negative in practice).
+    float wrapped = std::fmod (readPosF, (float) bufLen);
+    if (wrapped < 0.0f) wrapped += (float) bufLen;
+    int i0 = (int) wrapped;
     int i1 = (i0 + 1) % bufLen;
-    float frac = readPosF - std::floor (readPosF);
+    float frac = wrapped - (float) i0;
     return buf[(size_t) i0] + frac * (buf[(size_t) i1] - buf[(size_t) i0]);
 }
 
@@ -354,41 +358,51 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
             int clockIdx = juce::jlimit (0, clockChoices.size() - 1, (int) std::round (bp.clockSync->load()));
             float syncPct = bp.syncPercent->load();
-            float baseTimeMs;
+            float fullTimeMs;
             if (clockIdx == 0)
-            {
-                // Matches the hardware's real TAP control: "the timing at
-                // which the delayed sound is taken from the delay loop,
-                // expressed as a percentage of the delay time setting."
-                baseTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs, bp.timeMs->load() * syncPct);
-            }
+                fullTimeMs = bp.timeMs->load();
             else
-            {
-                double beats = clockBeatLengths[clockIdx];
-                double syncedMs = (60000.0 / hostBpm) * beats * (double) syncPct;
-                baseTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs, (float) syncedMs);
-            }
-            float totalTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs + kMaxModMs, baseTimeMs + modMs);
-            float delaySamples = (float) (totalTimeMs / 1000.0 * currentSampleRate);
+                fullTimeMs = (float) ((60000.0 / hostBpm) * clockBeatLengths[clockIdx]);
+            fullTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs, fullTimeMs);
 
-            float readPosF = (float) band.writePos - delaySamples;
-            float readL = readInterpolated (band.bufL, band.bufLen, readPosF);
-            float readR = readInterpolated (band.bufR, band.bufLen, readPosF);
+            // TAP (the hardware's real per-band control): "the timing at
+            // which the delayed sound is taken from the delay loop,
+            // expressed as a percentage of the delay time setting." The
+            // feedback loop itself always recirculates at the full
+            // fullTimeMs length; TAP only moves where the audible output
+            // is read from within that loop - it does not shorten the loop.
+            float tapTimeMs = juce::jlimit (0.0f, kMaxBandTimeMs, fullTimeMs * syncPct);
+            float tapTimeModMs = juce::jlimit (0.0f, kMaxBandTimeMs + kMaxModMs, tapTimeMs + modMs);
+
+            float delaySamplesFull = (float) (fullTimeMs / 1000.0 * currentSampleRate);
+            float delaySamplesTap = (float) (tapTimeModMs / 1000.0 * currentSampleRate);
+
+            float readFullL = readInterpolated (band.bufL, band.bufLen, (float) band.writePos - delaySamplesFull);
+            float readFullR = readInterpolated (band.bufR, band.bufLen, (float) band.writePos - delaySamplesFull);
+            float readTapL = readInterpolated (band.bufL, band.bufLen, (float) band.writePos - delaySamplesTap);
+            float readTapR = readInterpolated (band.bufR, band.bufLen, (float) band.writePos - delaySamplesTap);
 
             float feedback = band.smFeedback.getNextValue();
-            float fbL = band.loopHighCutL.processSample (band.loopLowCutL.processSample (readL)) * feedback;
-            float fbR = band.loopHighCutR.processSample (band.loopLowCutR.processSample (readR)) * feedback;
 
-            band.bufL[(size_t) band.writePos] = bandInL + fbL;
-            band.bufR[(size_t) band.writePos] = bandInR + fbR;
+            // The loop filter sits in the write path, so every sample is
+            // shaped as it enters the loop - including the very first pass
+            // (the manual: "the cutoff is also applied to the first delay"),
+            // with cumulative darkening on each subsequent repeat.
+            float combinedL = bandInL + readFullL * feedback;
+            float combinedR = bandInR + readFullR * feedback;
+            float filteredL = band.loopHighCutL.processSample (band.loopLowCutL.processSample (combinedL));
+            float filteredR = band.loopHighCutR.processSample (band.loopLowCutR.processSample (combinedR));
+
+            band.bufL[(size_t) band.writePos] = filteredL;
+            band.bufR[(size_t) band.writePos] = filteredR;
             band.writePos = (band.writePos + 1) % band.bufLen;
 
             float level = band.smLevel.getNextValue();
             float panL = band.smPanL.getNextValue();
             float panR = band.smPanR.getNextValue();
 
-            float bandOutL = readL * level * panL;
-            float bandOutR = readR * level * panR;
+            float bandOutL = readTapL * level * panL;
+            float bandOutR = readTapR * level * panR;
 
             if (isSeries)
             {

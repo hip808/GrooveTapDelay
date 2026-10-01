@@ -65,7 +65,15 @@ public:
 
     // Mark a button to use the round metal footswitch-image style; anything
     // unmarked (EFFECT BAND select, per-band ON/OFF) stays a flat LED chip.
-    static void setFootswitchStyle (juce::Button& b) { b.getProperties().set ("footswitch", true); }
+    // ledColour is what lights up when the button's toggle state is on -
+    // defaults to green ("engaged"); pass a warm/red for buttons where "on"
+    // means something is switched OFF (e.g. Bypass), matching typical pedal
+    // LED convention instead of lighting green for "bypassed".
+    static void setFootswitchStyle (juce::Button& b, juce::Colour ledColour = juce::Colour (0xff2e8b57))
+    {
+        b.getProperties().set ("footswitch", true);
+        b.getProperties().set ("footswitchLed", (int) ledColour.getARGB());
+    }
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColour,
                                bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
@@ -94,7 +102,10 @@ public:
 
         if (button.getToggleState())
         {
-            g.setColour (juce::Colour (0xff2e8b57).withAlpha (0.55f));
+            juce::Colour ledColour (0xff2e8b57);
+            if (auto* v = button.getProperties().getVarPointer ("footswitchLed"))
+                ledColour = juce::Colour ((juce::uint32) (int) *v);
+            g.setColour (ledColour.withAlpha (0.55f));
             g.fillEllipse (bounds.reduced (bounds.getWidth() * 0.32f));
         }
         else if (shouldDrawButtonAsHighlighted)

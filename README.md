@@ -105,18 +105,10 @@ or would require guessing undocumented behavior:
   note-division sync) and is **not** the same as the hardware's real SYNC
   function (which links one band's LFO phase to another's) — don't confuse
   the two.
-- TAP currently does not yet separate the audible-output tap length from
-  the feedback-loop recirculation length (both derive from the same
-  Time × Tap% value) — a known deviation flagged for a future fix.
-- The loop filter currently only shapes feedback repeats, not the first
-  echo — the manual states the cutoff should apply to the first delay too;
-  known deviation, flagged for a future fix.
 - The internal curve mapping Speed/Depth knob values (0–10, confirmed from
   the manual) to actual Hz/ms is an inferred exponential/power-law curve,
   tuned by ear — the manual does not document the hardware's exact internal
   curve, so this is a best-effort match, not a byte-exact reproduction.
-- No parameter smoothing yet on Time/Pan/Level/Feedback — fast automation
-  or knob moves can click; flagged for a future fix.
 - AD/DA converter modeling (the manual's 44.1kHz / 20-bit+3-bit-floating
   A/D spec) is deliberately not attempted — speculative without reference
   hardware to measure against, and low value in an all-digital DAW chain.

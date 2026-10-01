@@ -88,7 +88,7 @@ GrooveTapContentPanel::GrooveTapContentPanel (GrooveTapDelayAudioProcessor& p)
     waveLabel.attachToComponent (&waveBox, false);
     addAndMakeVisible (waveLabel);
 
-    GrooveTapLookAndFeel::setFootswitchStyle (bypassButton);
+    GrooveTapLookAndFeel::setFootswitchStyle (bypassButton, juce::Colour (0xffd84a3a)); // red: "on" means bypassed
     bypassButton.setClickingTogglesState (true);
     addAndMakeVisible (bypassButton);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
@@ -346,6 +346,12 @@ void GrooveTapContentPanel::timerCallback()
     int midiBand = proc.getMidiSelectedBand();
     if (midiBand != selectedBand)
         selectBand (midiBand);
+
+    // Keep the Assign knob following its target parameter if the host (or
+    // another control) changes it directly - but not while the user is
+    // actively dragging the knob themselves, or we'd fight their gesture.
+    if (! assignKnob.isMouseButtonDown())
+        syncAssignFromTarget();
 }
 
 void GrooveTapContentPanel::applyAssignToTarget()
