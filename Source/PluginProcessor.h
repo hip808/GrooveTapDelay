@@ -56,6 +56,10 @@ struct DelayBand
         std::fill (bufL.begin(), bufL.end(), 0.0f);
         std::fill (bufR.begin(), bufR.end(), 0.0f);
         writePos = 0;
+        loopLowCutL.reset();
+        loopLowCutR.reset();
+        loopHighCutL.reset();
+        loopHighCutR.reset();
     }
 };
 
@@ -67,6 +71,7 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
@@ -82,10 +87,13 @@ public:
     // Default MIDI note numbers mirroring the hardware's 4 footswitches:
     // Select Band (cycle), Band On/Off (toggle the selected band), Tap
     // Tempo, Bypass. Fixed for now - no MIDI-learn UI yet.
-    static constexpr int kMidiNoteSelectBand = 36;
-    static constexpr int kMidiNoteToggleOnOff = 37;
-    static constexpr int kMidiNoteTapTempo = 38;
-    static constexpr int kMidiNoteBypass = 39;
+    // Deliberately kept high (above nearly all real musical content,
+    // including the near-universal "kick drum = note 36/C1" convention)
+    // to avoid a normal MIDI part on this track silently triggering these.
+    static constexpr int kMidiNoteSelectBand = 116;
+    static constexpr int kMidiNoteToggleOnOff = 117;
+    static constexpr int kMidiNoteTapTempo = 118;
+    static constexpr int kMidiNoteBypass = 119;
 
     int getMidiSelectedBand() const { return midiSelectedBand.load(); }
 
@@ -153,6 +161,7 @@ private:
 
     void applyFactoryPreset (const FactoryPreset& preset);
     void setRawParam (const juce::String& id, float rawValue);
+    juce::String getDefaultPatchName (int index) const;
 
     juce::StringArray patchNames;
     juce::StringArray patchXmlStore; // per-slot saved ValueTree XML; empty = not yet saved

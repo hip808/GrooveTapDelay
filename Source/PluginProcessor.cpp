@@ -75,13 +75,7 @@ GrooveTapDelayAudioProcessor::GrooveTapDelayAudioProcessor()
     patchXmlStore.ensureStorageAllocated (kTotalPatches);
     for (int i = 0; i < kTotalPatches; ++i)
     {
-        if (i < kNumFactorySlots)
-            patchNames.add (factoryPresets[(size_t) i].name);
-        else if (i < kNumFactorySlots + kNumUserSlots)
-            patchNames.add (factoryPresets[(size_t) (i - kNumFactorySlots)].name);
-        else
-            patchNames.add ("Init " + juce::String (i - (kNumFactorySlots + kNumUserSlots) + 1));
-
+        patchNames.add (getDefaultPatchName (i));
         patchXmlStore.add ({});
     }
 
@@ -210,6 +204,14 @@ void GrooveTapDelayAudioProcessor::prepareToPlay (double sr, int)
 }
 
 void GrooveTapDelayAudioProcessor::releaseResources() {}
+
+void GrooveTapDelayAudioProcessor::reset()
+{
+    // Hosts call this on transport stop/relocate/loop - clear delay buffers
+    // and filter state so old audio can't bleed across the discontinuity.
+    for (auto& band : bands)
+        band.reset();
+}
 
 bool GrooveTapDelayAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
@@ -495,6 +497,15 @@ juce::String GrooveTapDelayAudioProcessor::getPatchName (int index) const
     return patchNames[index];
 }
 
+juce::String GrooveTapDelayAudioProcessor::getDefaultPatchName (int index) const
+{
+    if (index < kNumFactorySlots)
+        return factoryPresets[(size_t) index].name;
+    if (index < kNumFactorySlots + kNumUserSlots)
+        return factoryPresets[(size_t) (index - kNumFactorySlots)].name;
+    return "Init " + juce::String (index - (kNumFactorySlots + kNumUserSlots) + 1);
+}
+
 void GrooveTapDelayAudioProcessor::loadPatch (int index)
 {
     index = juce::jlimit (0, kTotalPatches - 1, index);
@@ -550,7 +561,7 @@ void GrooveTapDelayAudioProcessor::getStateInformation (juce::MemoryBlock& destD
     auto* bank = new juce::XmlElement ("PatchBank");
     for (int i = kNumFactorySlots; i < kTotalPatches; ++i)
     {
-        bool nameChanged = patchNames[i] != getPatchName (i);
+        bool nameChanged = patchNames[i] != getDefaultPatchName (i);
         bool hasSavedState = patchXmlStore[i].isNotEmpty();
         if (! nameChanged && ! hasSavedState) continue;
 

@@ -97,6 +97,9 @@ GrooveTapContentPanel::GrooveTapContentPanel (GrooveTapDelayAudioProcessor& p)
     // ---- ASSIGN macro knob ----
     setupKnob (assignKnob, assignLabel, "Assign");
     assignKnob.setRange (0.0, 1.0);
+    assignKnob.textFromValueFunction = [] (double v) { return juce::String (v * 100.0, 1) + " %"; };
+    assignKnob.valueFromTextFunction = [] (const juce::String& t) { return t.getDoubleValue() / 100.0; };
+    assignKnob.setValue (assignKnob.getValue(), juce::dontSendNotification); // refresh displayed text
     assignKnob.onValueChange = [this] { applyAssignToTarget(); };
 
     addAndMakeVisible (assignTargetBox);
