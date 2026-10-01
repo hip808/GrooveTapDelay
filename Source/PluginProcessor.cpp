@@ -272,6 +272,29 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         float lowCutHz = lowCutNorm < 0.02f ? 20.0f : juce::jmap (lowCutNorm, 0.0f, 1.0f, 20.0f, 1000.0f);
         float highCutHz = highCutNorm < 0.02f ? 20000.0f : juce::jmap (highCutNorm, 0.0f, 1.0f, 20000.0f, 1000.0f);
 
+        // Push this block's Feedback/Level/Pan targets into the smoothers
+        // (snap on the very first block so playback doesn't ramp up from 0).
+        float targetFeedback = bp.feedback->load();
+        float targetLevel = bp.level->load();
+        float targetPan = bp.pan->load();
+        float targetPanL = std::sqrt (0.5f * (1.0f - targetPan));
+        float targetPanR = std::sqrt (0.5f * (1.0f + targetPan));
+        if (! band.smoothingInitialized)
+        {
+            band.smFeedback.setCurrentAndTargetValue (targetFeedback);
+            band.smLevel.setCurrentAndTargetValue (targetLevel);
+            band.smPanL.setCurrentAndTargetValue (targetPanL);
+            band.smPanR.setCurrentAndTargetValue (targetPanR);
+            band.smoothingInitialized = true;
+        }
+        else
+        {
+            band.smFeedback.setTargetValue (targetFeedback);
+            band.smLevel.setTargetValue (targetLevel);
+            band.smPanL.setTargetValue (targetPanL);
+            band.smPanR.setTargetValue (targetPanR);
+        }
+
         auto lc = juce::dsp::IIR::Coefficients<float>::makeHighPass (currentSampleRate, lowCutHz);
         auto hc = juce::dsp::IIR::Coefficients<float>::makeLowPass (currentSampleRate, highCutHz);
 
@@ -352,7 +375,7 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             float readL = readInterpolated (band.bufL, band.bufLen, readPosF);
             float readR = readInterpolated (band.bufR, band.bufLen, readPosF);
 
-            float feedback = bp.feedback->load();
+            float feedback = band.smFeedback.getNextValue();
             float fbL = band.loopHighCutL.processSample (band.loopLowCutL.processSample (readL)) * feedback;
             float fbR = band.loopHighCutR.processSample (band.loopLowCutR.processSample (readR)) * feedback;
 
@@ -360,10 +383,9 @@ void GrooveTapDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             band.bufR[(size_t) band.writePos] = bandInR + fbR;
             band.writePos = (band.writePos + 1) % band.bufLen;
 
-            float pan = bp.pan->load();
-            float level = bp.level->load();
-            float panL = std::sqrt (0.5f * (1.0f - pan));
-            float panR = std::sqrt (0.5f * (1.0f + pan));
+            float level = band.smLevel.getNextValue();
+            float panL = band.smPanL.getNextValue();
+            float panR = band.smPanR.getNextValue();
 
             float bandOutL = readL * level * panL;
             float bandOutR = readR * level * panR;

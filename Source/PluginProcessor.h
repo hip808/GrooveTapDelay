@@ -36,6 +36,11 @@ struct DelayBand
     juce::dsp::IIR::Filter<float> loopLowCutL, loopLowCutR;   // high-pass (cuts lows)
     juce::dsp::IIR::Filter<float> loopHighCutL, loopHighCutR; // low-pass  (cuts highs)
 
+    // Smoothed per-sample gains, so Feedback/Level/Pan knob moves and host
+    // automation ramp instead of jumping (jumping is what causes clicks).
+    juce::SmoothedValue<float> smFeedback, smLevel, smPanL, smPanR;
+    bool smoothingInitialized = false;
+
     void prepare (double sampleRate)
     {
         bufLen = (int) std::ceil ((kMaxBandTimeMs / 1000.0 + 0.03) * sampleRate) + 8;
@@ -49,6 +54,13 @@ struct DelayBand
         loopLowCutR.prepare (spec);
         loopHighCutL.prepare (spec);
         loopHighCutR.prepare (spec);
+
+        constexpr double smoothSeconds = 0.02;
+        smFeedback.reset (sampleRate, smoothSeconds);
+        smLevel.reset (sampleRate, smoothSeconds);
+        smPanL.reset (sampleRate, smoothSeconds);
+        smPanR.reset (sampleRate, smoothSeconds);
+        smoothingInitialized = false; // next processBlock snaps to the current value instead of ramping from 0
     }
 
     void reset()
